@@ -1,0 +1,31 @@
+{
+ "started": "2026-10-10T07:38:36+00:00",
+ "git": "ebb6cc2",
+ "hf_repo": "google/timesfm-3.0-pytorch",
+ "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+ "device": "cuda",
+ "n_layers": 20,
+ "d_model": 1280,
+ "shape_per_record": [
+  20,
+  12,
+  156,
+  2560
+ ],
+ "dtype": "float16",
+ "layout": "[layer, lead (LEADS order), block, forward states | time-reversed states]",
+ "preprocessing": {
+  "highpass_hz": 0.5,
+  "butterworth_order": 5,
+  "zero_phase": true,
+  "samples": 4992
+ },
+ "patch_is_target": true,
+ "records": 200,
+ "written": 200,
+ "skipped_existing": 0,
+ "model_seconds_per_record": 1.9406830728150022,
+ "max_abs_state": 1080.0,
+ "finished": "2026-10-10T07:51:18+00:00",
+ "path": "/vol/states/43046b85ec22d584a13f8098c2ed39c889e129c2"
+}
