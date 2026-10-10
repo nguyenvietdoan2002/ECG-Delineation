@@ -75,4 +75,7 @@ Other single-lead (lead I) rows in the same table: NeuroKit2 `dwt` F1 99.25 / 98
 SDs match the single-lead rows within 0.3 ms for all nine points; F1 matches within 1 point for the
 QRS and T points. P-wave F1 is 91.8% against 99.8% because the paper evidently did not count P
 detections on beats without a P annotation as false positives (AF/flutter people and sinus beats with
-no P marked in lead I); our scorer does. See decision 48.
+no P marked in lead I); our scorer does. See decision 48. The FastNVG variant
+(`results/neurokit_prominence_emrich2023.json`) came out far worse (lead-I QRS F1 93.3%, V1–V3
+43–64%): NeuroKit2 0.2.13's `emrich2023` detector misses many beats, so it does not reproduce the
+paper's pipeline and is not used further (decision 49).

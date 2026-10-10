@@ -92,8 +92,8 @@ def main(rpeaks: str = "neurokit") -> None:
     result = score_predictions.remote(name, predictions, meta)
 
     (REPO / "results" / "predictions").mkdir(parents=True, exist_ok=True)
-    (REPO / "results" / f"{name}.json").write_text(json.dumps(result, indent=1), encoding="utf-8")
-    (REPO / "results" / "predictions" / f"{name}.json").write_text(json.dumps(predictions), encoding="utf-8")
+    (REPO / "results" / f"{name}.json").write_text(json.dumps(result, indent=1), encoding="utf-8", newline="\n")
+    (REPO / "results" / "predictions" / f"{name}.json").write_text(json.dumps(predictions), encoding="utf-8", newline="\n")
 
     all_leads = result["all_leads"]
     print(f"\n{name}: {all_leads['n_people']} people, failed leads {all_leads['failed_leads']}, orphans {all_leads['orphans']}")
