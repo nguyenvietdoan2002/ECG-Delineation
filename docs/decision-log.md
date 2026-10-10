@@ -42,4 +42,15 @@ Implementation-stage decisions, agreed on 2026-10-10:
 | 32 | T4 GPUs for everything; no per-launch cost check; credits reported at milestone ends. | The workload is small; T4 is the cheapest adequate GPU. User's choice on the check. |
 | 33 | `timesfm3` is imported from `Meddies/timesfm/src` via a `.pth` file locally and copied into the Modal image. | An editable install would write an `egg-info` folder into the upstream clone. |
 
+Implementation details fixed during M0 (2026-10-10):
+
+| # | Decision | Why |
+|---|---|---|
+| 34 | A wave's label covers onset..offset inclusive; the mask covers first mark..last mark inclusive. | LUDB's `)` marks the last sample of the wave. |
+| 35 | For an incomplete wave (peak without onset or offset) the whole gap between the neighbouring complete waves is masked out. | Its true extent is unknown; masking only the known side would teach a wrong boundary. 134 such waves in LUDB. |
+| 36 | Rhythm groups for stratification: `sinus` (any "sinus" rhythm), `af_flutter`, `other`. LUDB has 182 / 18 / 0. | Only two groups occur; AF/flutter is the hard case and must appear in every test fold (3–4 people each). |
+| 37 | Folds are dealt round-robin per rhythm group with one running counter; validation (20%) and learning-curve subsets (25%, 50%) are stratified the same way; subsets are nested prefixes of one shuffle, taken from the training people with the validation people held fixed. | Balanced fold sizes (40 each), every subset keeps AF people, and early stopping is comparable across subset sizes. |
+| 38 | `splits/ludb_5fold_seed0.json` was generated locally (deterministic, seed 0) and committed; experiments read the file, never regenerate it. | A 20-second deterministic job; the file is the single source of truth on both laptop and Modal. |
+| 39 | Local environment uses CPU PyTorch; the Modal image installs PyTorch 2.14.1 with CUDA 13 and copies `timesfm3` and `ecgdelin` from the local checkouts at run time. | The laptop only runs unit tests; Modal always runs the exact code in the working tree. |
+
 Decision 8 is not in the table because it was not a plan decision. It was to remove the credentialed ICD zip and its history from the Hugging Face dataset repo. The repo can stay public, since the MIMIC-IV-ECG waveforms are ODbL. The user handles this, and it does not affect step 1.
