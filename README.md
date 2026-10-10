@@ -19,12 +19,21 @@ Locally that path is added through `.venv/Lib/site-packages/timesfm_src.pth`; th
 the `timesfm3` package from the same place. LUDB is read in place from
 `../20260926_Elsevier 2025/data/ludb/...` (set `LUDB_DIR` to override).
 
-Experiments run on Modal (`modal run scripts/<step>.py`); nothing trains on the laptop.
+Experiments run on Modal (`modal run scripts/<step>.py`); nothing trains on the laptop. The Modal
+Volume `ecg-delineation` holds LUDB under `/ludb` (uploaded once with `modal volume put`), and every
+run writes its predictions and results there as well as into `results/` here.
 
 ```powershell
 uv run pytest                 # unit tests (seconds, no GPU)
 uv run pytest -m data         # tests that read the local LUDB copy
+uv run modal run scripts/smoke.py          # image + Volume check on CPU and T4
+uv run modal run scripts/run_neurokit.py   # M1: NeuroKit2 prominence baseline over all of LUDB
+uv run modal run scripts/run_neurokit.py --rpeaks emrich2023   # paper-faithful variant (FastNVG R-peaks)
 ```
+
+Results: `results/<method>.json` (all metrics, with the Emrich 2024 comparison for lead I) and
+`results/predictions/<method>.json` (every predicted point). References are in
+[docs/references.md](docs/references.md).
 
 ## Licences
 

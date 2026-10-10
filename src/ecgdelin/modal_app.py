@@ -4,7 +4,8 @@ All experiment steps run on Modal (CPU functions for loading, NeuroKit2 and scor
 for TimesFM state extraction, training and inference). One Volume holds LUDB, the TimesFM weights,
 stored states, checkpoints, predictions and result JSONs.
 
-    modal run src/ecgdelin/modal_app.py            # smoke test: CPU + T4 containers
+Scripts under scripts/ import ``app`` from here and add their own functions and local entrypoint
+(``modal run scripts/smoke.py`` runs the CPU + T4 smoke test).
 """
 
 import modal
@@ -28,6 +29,7 @@ image = (
         "pandas==2.3.3",
         "wfdb==4.3.1",
         "neurokit2==0.2.13",
+        "ts2vg==1.2.4",  # FastNVG R-peaks (ecg_peaks method "emrich2023") for the Emrich 2024 check
         "huggingface_hub==2.2.0",
         "safetensors==0.8.0",
         "tqdm==4.70.1",
@@ -78,9 +80,3 @@ def smoke_gpu() -> dict[str, object]:
         "device": torch.cuda.get_device_name(0),
         "capability": torch.cuda.get_device_capability(0),
     }
-
-
-@app.local_entrypoint()
-def main() -> None:
-    print("cpu:", smoke_cpu.remote())
-    print("gpu:", smoke_gpu.remote())
