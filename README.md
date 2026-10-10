@@ -31,13 +31,16 @@ uv run modal run scripts/run_neurokit.py   # M1: NeuroKit2 prominence baseline o
 uv run modal run scripts/run_neurokit.py --rpeaks emrich2023   # paper-faithful variant (FastNVG R-peaks)
 uv run modal run scripts/gpu_tests.py      # the gpu-marked tests (real TimesFM 3) inside a T4 container
 uv run modal run scripts/extract_states.py # M2: TimesFM 3 states for all 200 records into the Volume
+uv run modal run scripts/train_fold.py     # M3: probe, main head and U-Net on fold 0, scored on its validation people
+uv run modal run scripts/train_fold.py --max-epochs 2 --models head   # a smoke run
 ```
 
 The `gpu` tests are deselected locally; the laptop never loads the backbone.
 
-Results: `results/<method>.json` (all metrics, with the Emrich 2024 comparison for lead I) and
-`results/predictions/<method>.json` (every predicted point). References are in
-[docs/references.md](docs/references.md).
+Results: `results/<method>.json` (all metrics, with the Emrich 2024 comparison for lead I),
+`results/m3/<run>.json` (M3 training histories and validation-people scores) and
+`results/predictions/<name>.json` (every predicted point). Trained weights stay in the Volume under
+`/models/<run>/`. References are in [docs/references.md](docs/references.md).
 
 ## Licences
 

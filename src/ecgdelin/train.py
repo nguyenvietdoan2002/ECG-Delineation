@@ -188,8 +188,10 @@ def train_jointly(
     device: torch.device,
     checkpoint: Path | None = None,
     log: Callable[[str], None] = print,
+    after_epoch: Callable[[int], None] | None = None,
 ) -> None:
-    """Train all ``trainees`` over the same shuffled batches of ``train_idx``; ``targets`` is (recordings, 12, samples)."""
+    """Train all ``trainees`` over the same shuffled batches of ``train_idx``; ``targets`` is (recordings, 12, samples).
+    ``after_epoch`` runs once the epoch's checkpoint is written (the Modal script commits the Volume there)."""
     train_idx, val_idx = list(train_idx), list(val_idx)
     rng = np.random.default_rng(seed)
     for t in trainees:
@@ -238,6 +240,8 @@ def train_jointly(
             log(f"epoch {epoch:3d} {t.name:>8s}: train {sums[t.name] / n_batches:.4f} val {val:.4f} best {t.best_val:.4f}@{t.best_epoch}{' stopped' if t.stopped else ''}")
         if checkpoint is not None:
             _save(checkpoint, epoch + 1, trainees, rng)
+        if after_epoch is not None:
+            after_epoch(epoch)
 
     for t in trainees:
         if t.best_state is not None:
