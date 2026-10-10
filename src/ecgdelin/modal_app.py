@@ -8,10 +8,15 @@ Scripts under scripts/ import ``app`` from here and add their own functions and 
 (``modal run scripts/smoke.py`` runs the CPU + T4 smoke test).
 """
 
+import os
+from pathlib import Path
+
 import modal
 
 from ecgdelin.paths import timesfm_src
 
+# Locally the project root (for mounting tests/); inside containers the env var points at /root.
+_PROJECT = Path(os.environ.get("ECGDELIN_PROJECT", Path(__file__).resolve().parents[2]))
 VOLUME_NAME = "ecg-delineation"
 VOL = "/vol"  # mount point inside containers
 LUDB_IN_VOL = f"{VOL}/ludb"
@@ -33,17 +38,20 @@ image = (
         "huggingface_hub==2.2.0",
         "safetensors==0.8.0",
         "tqdm==4.70.1",
+        "pytest==9.1.1",  # the gpu-marked tests run inside a T4 container (scripts/gpu_tests.py)
     )
     .env(
         {
             "HF_HOME": HF_IN_VOL,
             "LUDB_DIR": LUDB_IN_VOL,
             "TIMESFM_SRC": "/root",  # so timesfm_src() / "timesfm3" is the copied package in containers
+            "ECGDELIN_PROJECT": "/root",  # so _PROJECT / "tests" is the copied tests folder
             "HF_HUB_DISABLE_TELEMETRY": "1",
         }
     )
     .add_local_python_source("ecgdelin")
     .add_local_dir(str(timesfm_src() / "timesfm3"), remote_path="/root/timesfm3")
+    .add_local_dir(str(_PROJECT / "tests"), remote_path="/root/tests")
 )
 
 app = modal.App("ecg-delineation", image=image)

@@ -29,7 +29,11 @@ uv run pytest -m data         # tests that read the local LUDB copy
 uv run modal run scripts/smoke.py          # image + Volume check on CPU and T4
 uv run modal run scripts/run_neurokit.py   # M1: NeuroKit2 prominence baseline over all of LUDB
 uv run modal run scripts/run_neurokit.py --rpeaks emrich2023   # paper-faithful variant (FastNVG R-peaks)
+uv run modal run scripts/gpu_tests.py      # the gpu-marked tests (real TimesFM 3) inside a T4 container
+uv run modal run scripts/extract_states.py # M2: TimesFM 3 states for all 200 records into the Volume
 ```
+
+The `gpu` tests are deselected locally; the laptop never loads the backbone.
 
 Results: `results/<method>.json` (all metrics, with the Emrich 2024 comparison for lead I) and
 `results/predictions/<method>.json` (every predicted point). References are in

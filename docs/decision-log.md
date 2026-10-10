@@ -70,4 +70,13 @@ Decisions for M1 (scorer and NeuroKit2 baseline), agreed on 2026-10-10:
 
 | 49 | The FastNVG variant (`ecg_peaks(method="emrich2023")`, decision 46) is reported in `results/neurokit_prominence_emrich2023.json` but not used further; the Emrich 2024 check rests on the default-detector run. | In NeuroKit2 0.2.13 that detector misses 7% of QRS in lead I and 36–57% in V1–V3 (QRS F1 79% over all leads against 98.5% for the default detector), so it does not reproduce the paper's pipeline, whose R-peak F1 was 99.8%. Diagnosing NeuroKit2's port is out of scope. |
 
+Implementation details fixed during M2 (2026-10-10):
+
+| # | Decision | Why |
+|---|---|---|
+| 50 | TimesFM is called through its full-sequence `forward` with the 12 leads as variates, 156 patches of 32, no masks, and `patch_is_target` True for every lead; no detrending, no CPM mask. Each layer's output is captured with forward hooks on `transformer_stack.layers`. | This is how TimesFM's own `decode` presents target series: the model sees each block's values but not the rolled "future covariate" copy of what follows, so forward states stay causal. `forward` skips `decode`'s padding and linear detrending; the 0.5 Hz high-pass handles drift. |
+| 51 | The high-pass uses mirrored ("even") padding of 6 s. | scipy's default pad of a few dozen samples is far shorter than a 0.5 Hz filter's memory; a probe on a 10 Hz wave showed the end transient falls from 1.9% to 0.5% of the amplitude 1 s from the ends and to 0.2% at 2 s with this choice. Edge transients cannot be removed entirely. |
+| 52 | States are stored per recording as `/vol/states/<checkpoint sha>/<record>.npy`, fp16, shape (20, 12, 156, 2560) laid out as [forward 1280 | reversed 1280], with a manifest; the checkpoint sha comes from the Hugging Face snapshot folder. | One file per recording keeps a fold's loading simple; the sha key invalidates the cache if the checkpoint changes (spec). |
+| 53 | The `gpu`-marked tests are deselected locally (`addopts = -m 'not gpu'`) and run inside a T4 container through `scripts/gpu_tests.py`, which mounts `tests/` into the image. | The laptop must never download the 1.3 GB weights or run the backbone; the same test files run unchanged on Modal. |
+
 Decision 8 is not in the table because it was not a plan decision. It was to remove the credentialed ICD zip and its history from the Hugging Face dataset repo. The repo can stay public, since the MIMIC-IV-ECG waveforms are ODbL. The user handles this, and it does not affect step 1.

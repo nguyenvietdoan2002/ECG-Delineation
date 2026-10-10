@@ -34,6 +34,7 @@ packages = ["src/ecgdelin"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not gpu'"  # gpu tests run on Modal: `modal run scripts/gpu_tests.py`
 markers = [
     "data: needs the LUDB download (skipped when absent)",
     "slow: long-running",
