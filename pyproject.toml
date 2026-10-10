@@ -1,0 +1,57 @@
+[project]
+name = "ecgdelin"
+version = "0.1.0"
+description = "Frozen TimesFM 3 states vs NeuroKit2 vs a 1-D U-Net for P/QRS/T wave delineation on LUDB"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "pandas>=2.2",
+    "wfdb>=4.1",
+    "neurokit2==0.2.13",
+    "torch>=2.4",
+    "modal>=1.5",
+    "huggingface_hub>=0.28",
+    "safetensors>=0.5",
+    "tqdm>=4.66",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "mypy>=1.11",
+    "pandas-stubs>=2.2",
+    "scipy-stubs>=1.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ecgdelin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "data: needs the LUDB download (skipped when absent)",
+    "slow: long-running",
+    "gpu: needs the real TimesFM model on a GPU (runs on Modal)",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+ignore_missing_imports = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
+
+# CPU-only PyTorch locally (tests only); the Modal image installs the CUDA build.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
