@@ -186,29 +186,41 @@ blocks 1 to k), across the other 11 leads at the same moment, and through a feed
 added on top of what was there. We read the token after every layer; that is a state. The forecast head on
 the right is what TimesFM was trained for, and we never use it.
 
-## 8. Reading bidirectional states out of a causal model
+## 8. Two passes: every block gets both sides
 
-**Visual:** D2: the 12-lead signal → forward pass (states per block) and time-reversed pass (states
-flipped back) → concatenated per block → the stored array 20 layers × 12 leads × 156 blocks × 2560.
+Redrawn on 2026-10-11 as a picture with four short lines; the storage numbers live on slide 14.
 
-**Bullets:**
-- Why two passes: attention over time is causal, so a block's forward state knows nothing of what follows
-  it, and a wave's offset is defined by what follows it
-- TimesFM only forecasts and is never fine-tuned; its forecasting loop is never called. Forward hooks read
-  the 20 layers, and every lead is a target, so its 64-sample future slot stays masked
-- Reversing is the idea of bidirectional RNNs and ELMo; all 20 layers are kept so a head can learn which
-  ones matter
-- Verified on a T4: changing late samples leaves earlier forward states unchanged and changes the joined
-  states
-- Crop to 4992 samples so the passes align block by block (no mark in the dropped 16 ms); computed once for
-  200 records, 36.6 GB in fp16 (largest magnitude 1080, round-trip error 2 × 10⁻⁴), so training never runs
-  the backbone again
+**Visual:** a real beat, record 6, lead V3, about 1.2 s cut into 64 ms blocks, with LUDB's T wave shaded.
+Block k (block 84) is highlighted; LUDB's T offset falls at sample 24 of its 32, marked by a dashed line,
+with a bracket over the flat stretch that follows. A blue arrow runs from the left edge to the end of block
+k: "Forward pass: block k is built from blocks 1 to k", annotated "sees only 14 ms past the T offset". An
+orange arrow runs from the right edge to the start of block k: "Reversed pass, flipped back: block k is
+built from blocks k to 156". Under block k, a bar of two halves, forward 1280 and reversed 1280, "= 2560":
+the joined state of block k, per layer.
 
-**Notes:** The first two bullets moved here from slide 7 when it became a figure. Storing the states is
-what makes training cheap: the heads train for hundreds of epochs without running the 1.3 GB backbone
-again. Each of the 20 layers is kept so the head can learn which layers matter
-through a weighted blend, which you will see in the models section. The file naming includes the checkpoint
-hash, so a changed checkpoint invalidates the cache.
+**Text (two columns):**
+
+*Why the forward pass alone is not enough*
+- TimesFM only looks backwards: the state of block k is built from blocks 1 to k.
+- A T wave's offset is where the signal turns flat after it. The forward state never sees that far, only up
+  to 62 ms ahead inside its own block.
+
+*What the reversed pass adds*
+- The same 10 s fed backwards: everything after block k becomes its past.
+- Flipped back into time order and joined to the forward states, each block gets both sides:
+  1280 + 1280 = 2560 numbers.
+
+**Footer:** Verified on a T4: later samples never change earlier forward states · its benefit was not
+measured in step 1 (decision 61) · Record 6, lead V3, LUDB marks.
+
+**Notes:** Every boundary is found by comparing what comes before it with what comes after it, and three of
+the five CSE points are offsets. In this beat the T offset sits late in block k, so the forward state of
+that block has seen only 14 ms of the flat signal that defines the offset. Running the same 10 s backwards
+turns everything after block k into its past; flipping those states back and joining them gives every block
+both sides. Two caveats if asked: the conv head already reads three blocks ahead, so even forward-only states
+give it some lookahead; the reversed pass gives every block the whole future, processed by all 20 layers
+and across the 12 leads, which matters most for the one-block probe. How much it helps was not measured in
+step 1: the forward-only run was deferred.
 
 ## 9. The pipeline and the repository
 
