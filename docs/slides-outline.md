@@ -383,16 +383,15 @@ own code. The two trained models therefore see exactly the same signal.
 Redrawn on 2026-10-11: a highlighted main function, three short cards instead of five bullets, and a figure
 from real stored states.
 
-**Main function (highlighted band):** `extract_states(signal, backbone) → float16 (20, 12, 156, 2560)`: runs
-frozen TimesFM 3 on one prepared recording forward and time-reversed, copies the output of all 20 layers,
-and joins the two passes per block.
+**Main function (highlighted band):** `extract_states(signal, backbone) → float16 (20, 12, 156, 2560)`: the
+step computes the hidden states of every ECG through frozen TimesFM 3 and stores them once, so the probe and
+the head can train on them without running TimesFM again.
 
 **Cards:**
-- `pass_states`: one pass over the 156 blocks; forward hooks copy each of the 20 layers' outputs.
-- `extract_states`: forward and reversed pass, flipped back and joined: 1280 + 1280 = 2560, stored as
-  float16.
-- `scripts/extract_states.py`: all 200 records on one T4, 1.9 s each (about 13 minutes in all); one 183 MB
-  file per record, 36.6 GB; resumes after a stop.
+- `pass_states`: one pass over the 156 blocks; hooks copy all 20 layers' outputs.
+- `extract_states`: forward and reversed passes, joined: 1280 + 1280 = 2560 per block, float16.
+- `scripts/extract_states.py`: 200 records on one T4, 1.9 s each (about 13 minutes in all); 183 MB per
+  record, 36.6 GB in all; it resumes after a stop.
 
 **Figure** (`results/deck/fig_states.png`, made by `scripts/deck_figures.py` from
 `results/deck/states_pca_115_layer5.npz`, a 5-component projection computed once from the stored states of
