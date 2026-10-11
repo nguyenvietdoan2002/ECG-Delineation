@@ -397,7 +397,8 @@ the head can train on them without running TimesFM again.
 `results/deck/states_pca_115_layer5.npz`, a 5-component projection computed once from the stored states of
 record 115 with `--states <downloaded 115.npy>`): left, record 115, lead II, the ECG with the cardiologists'
 P, QRS and T marks shaded, and under it principal component 1 of the layer-5 states, one value per 64 ms
-block; right, all 1872 blocks of the 12 leads by principal components 1 and 3, coloured by each block's
+block; right, the 1338 labelled blocks of the 12 leads by principal components 1 and 3 (fitted on all
+1872 blocks; the 534 outside the marked spans have no mark and are not drawn), coloured by each block's
 majority mark: QRS far right, T at the bottom, P in between, unlabelled blocks on the left. Principal
 component 1 alone accounts for 73% of the variance between the four block types over all 12 leads (82% in
 lead II); layer 5 is also the layer the linear probe weighted most.

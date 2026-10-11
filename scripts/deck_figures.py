@@ -197,7 +197,7 @@ def states_figure(record: str = "115", lead: str = "ii") -> Path:
     sx.set_xlabel(f"PC {a + 1}", fontsize=11)
     sx.set_ylabel(f"PC {b + 1}", fontsize=11)
     sx.tick_params(labelsize=11)
-    sx.set_title(f"All 1872 blocks of the 12 leads, layer {layer}", loc="left", fontsize=13, color=INK)
+    sx.set_title(f"The {int(ok.sum())} labelled blocks of the 12 leads, layer {layer}", loc="left", fontsize=13, color=INK)
     handles = [plt.Line2D([], [], marker="o", ls="", color=CLASS_COLORS[n], markersize=6, label=n) for n in ("P", "QRS", "T", "none")]
     sx.legend(handles=handles, loc="upper right", fontsize=11, frameon=False, handletextpad=0.2, borderaxespad=0.2)
     path = OUT / "fig_states.png"
