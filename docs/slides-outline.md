@@ -378,24 +378,42 @@ the ST segment and wave edges are not distorted. Then the branches: NeuroKit2 ne
 cleans the raw signal itself; the U-Net only adds a per-lead scaling; TimesFM cuts and normalises inside its
 own code. The two trained models therefore see exactly the same signal.
 
-## 14. `states.py` and `extract_states.py`: the state extractor
+## 14. `states.py` and `extract_states.py`: the extractor
 
-**Visual:** D2 again, small, with the storage layout `/vol/states/<checkpoint sha>/<record>.npy`.
+Redrawn on 2026-10-11: a highlighted main function, three short cards instead of five bullets, and a figure
+from real stored states.
 
-**Bullets:**
-- `to_patches` (12 leads → 156 × 32), `pass_states(signal, backbone, reverse)` runs one pass and collects
-  the 20 layers' outputs through forward hooks on `transformer_stack.layers`
-- `extract_states` joins forward and flipped-back reversed states: array (20, 12, 156, 2560), fp16
-- `TimesFMBackbone` wraps the real model: eval mode, inference mode, fp32, `patch_is_target` for all leads,
-  no masks, no detrending (decision 50)
-- `extract_states.py` runs on a Modal T4 over all 200 records, saves per record and resumes if preempted;
-  writes `results/states_manifest.json` with the checkpoint revision
-- Tested with a stub backbone locally and with the real model on Modal (`test_states_gpu.py`)
+**Main function (highlighted band):** `extract_states(signal, backbone) → float16 (20, 12, 156, 2560)`: runs
+frozen TimesFM 3 on one prepared recording forward and time-reversed, copies the output of all 20 layers,
+and joins the two passes per block.
 
-**Notes:** The backbone is called through its full-sequence forward, not the forecasting API, which cannot
-expose hidden states. The hooks read the output of each layer, shape (batch, 12, 156, 1280). The
-causality test is the key check: it would catch any accidental look-ahead, for example through the rolled
-future-covariate inputs TimesFM uses internally; those are masked for target series.
+**Cards:**
+- `pass_states`: one pass over the 156 blocks; forward hooks copy each of the 20 layers' outputs.
+- `extract_states`: forward and reversed pass, flipped back and joined: 1280 + 1280 = 2560, stored as
+  float16.
+- `scripts/extract_states.py`: all 200 records on one T4, 1.9 s each (about 13 minutes in all); one 183 MB
+  file per record, 36.6 GB; resumes after a stop.
+
+**Figure** (`results/deck/fig_states.png`, made by `scripts/deck_figures.py` from
+`results/deck/states_pca_115_layer5.npz`, a 5-component projection computed once from the stored states of
+record 115 with `--states <downloaded 115.npy>`): left, record 115, lead II, the ECG with the cardiologists'
+P, QRS and T marks shaded, and under it principal component 1 of the layer-5 states, one value per 64 ms
+block; right, all 1872 blocks of the 12 leads by principal components 1 and 3, coloured by each block's
+majority mark: QRS far right, T at the bottom, P in between, unlabelled blocks on the left. Principal
+component 1 alone accounts for 73% of the variance between the four block types over all 12 leads (82% in
+lead II); layer 5 is also the layer the linear probe weighted most.
+
+**Caption:** What a stored state holds: principal component 1 is computed from the states alone, with no
+labels, and still spikes at every QRS, even at the first and last beats, which the cardiologists left
+unmarked. The colours are the marks, added afterwards.
+
+**Footer:** tests: stub backbone on the laptop; the real model on a T4 checks shapes, alignment and
+causality · checkpoint revision 43046b85 · decisions 50 to 53, 63 · figure: scripts/deck_figures.py.
+
+**Notes:** The extractor is two functions and a batch job. Show the figure: nothing in it was trained. A
+plain principal-component projection of the layer-5 states already rises at every QRS and separates the
+four kinds of block, which is why a single linear layer, the probe, can already match the U-Net. One record,
+one layer: an illustration, not a result.
 
 ## 15. `modal_app.py`, `paths.py`, `smoke.py`, `gpu_tests.py`: the compute
 

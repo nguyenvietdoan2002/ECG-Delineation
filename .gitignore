@@ -12,3 +12,5 @@ __pycache__/
 *.npz
 # Class maps of the development models are small raw predictions, committed so the M3 report is reproducible.
 !results/m3/*_classes.npz
+# The deck figure cache: a 5-component projection of one record's states, so the figure needs no 183 MB download.
+!results/deck/*.npz

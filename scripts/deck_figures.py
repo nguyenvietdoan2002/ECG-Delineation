@@ -112,5 +112,106 @@ def preprocess_steps(record: str = "91", lead: str = "ii") -> Path:
     return path
 
 
+CLASS_COLORS = {"P": "#2a78d6", "QRS": "#eb6834", "T": "#1baf7a", "none": "#b9b8b2"}
+CLASS_TINTS = {"P": "#d5e5f8", "QRS": "#fbdccd", "T": "#d3efe3"}
+STATES_CACHE = OUT / "states_pca_115_layer5.npz"
+
+
+def states_projection(states_path: Path, record: str = "115", layer: int = 5) -> Path:
+    """Principal components of one record's stored states at one layer, all 12 leads, with each block's
+    majority label from the cardiologists' marks; cached so the figure needs no 183 MB download."""
+    from ecgdelin.labels import CLASSES, labels_for
+    from ecgdelin.preprocess import N_SAMPLES
+
+    states = np.load(states_path, mmap_mode="r")[layer].astype(np.float32)  # (12, 156, 2560)
+    x = states.reshape(-1, states.shape[-1])
+    x = (x - x.mean(1, keepdims=True)) / (x.std(1, keepdims=True) + 1e-6)  # per-vector normalisation, as the heads
+    xc = x - x.mean(0, keepdims=True)
+    _, s, vt = np.linalg.svd(xc, full_matrices=False)
+    pcs = (xc @ vt[:5].T).reshape(12, 156, 5)
+    rec = load_record(ludb_root(), record)
+    majority = np.full((12, 156), -1, dtype=np.int64)
+    for k, lead in enumerate(LEADS):
+        lab = labels_for(rec.marks[lead], N_SAMPLES)
+        cls, mask = lab.classes.reshape(156, 32), lab.mask.reshape(156, 32)
+        for b in range(156):
+            if mask[b].any():
+                majority[k, b] = int(np.bincount(cls[b][mask[b]], minlength=len(CLASSES)).argmax())
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(STATES_CACHE, pcs=pcs.astype(np.float32), majority=majority, explained=(s**2 / (s**2).sum())[:5], record=record, layer=layer)
+    return STATES_CACHE
+
+
+def states_figure(record: str = "115", lead: str = "ii") -> Path:
+    from ecgdelin.labels import CLASSES
+    from ecgdelin.preprocess import N_SAMPLES, prepare
+
+    data = np.load(STATES_CACHE)
+    pcs, majority, layer = data["pcs"], data["majority"], int(data["layer"])
+    ok = majority >= 0
+
+    def class_r2(values: np.ndarray) -> float:
+        y, g = values[ok], majority[ok]
+        total = float(((y - y.mean()) ** 2).sum())
+        between = sum(float(((y[g == c].mean() - y.mean()) ** 2) * (g == c).sum()) for c in np.unique(g))
+        return between / total
+
+    r2 = [class_r2(pcs[..., j]) for j in range(pcs.shape[-1])]
+    a, b = sorted(np.argsort(r2)[-2:])  # the two components that follow the waves best
+    k = LEADS.index(lead)
+    pc = pcs[k, :, a].copy()
+    if np.median(pc[majority[k] == CLASSES.index("QRS")]) < 0:  # sign is arbitrary: QRS blocks up
+        pc = -pc
+        pcs[..., a] = -pcs[..., a]
+    rec = load_record(ludb_root(), record)
+    sig = prepare(rec.signal, rec.fs)[k]
+    t = np.arange(N_SAMPLES) / rec.fs
+    tb = np.arange(157) * 32 / rec.fs
+
+    fig = plt.figure(figsize=(16.96, 4.4), dpi=200)
+    gs = GridSpec(2, 2, width_ratios=[2.3, 1], height_ratios=[1, 1], wspace=0.10, hspace=0.12, left=0.04, right=0.99, top=0.88, bottom=0.12, figure=fig)
+    ax = fig.add_subplot(gs[0, 0])
+    px = fig.add_subplot(gs[1, 0], sharex=ax)
+    for w in rec.marks[lead]:
+        if w.onset is not None and w.offset is not None:
+            for axis in (ax, px):
+                axis.axvspan(w.onset / rec.fs, (w.offset + 1) / rec.fs, color=CLASS_TINTS[w.kind], lw=0, zorder=0)
+    ax.plot(t, sig, color=INK, lw=0.9, zorder=2)
+    ax.set_ylabel("mV", fontsize=11)
+    ax.tick_params(labelbottom=False, labelsize=11)
+    ax.grid(axis="x", visible=False)
+    ax.set_title(f"Record {record}, lead {lead.upper()}: the ECG with the cardiologists' marks, and one number from its stored states", loc="left", fontsize=13, color=INK)
+    px.step(tb, np.append(pc, pc[-1]), where="post", color=INK, lw=1.3, zorder=2)
+    px.set_ylabel(f"layer {layer}, PC {a + 1}", fontsize=11)
+    px.tick_params(labelsize=11)
+    px.set_xlim(0, N_SAMPLES / rec.fs)
+    px.set_xticks([0, 2, 4, 6, 8])
+    px.set_xticklabels(["0", "2", "4", "6", "8 s"])
+    px.grid(axis="x", visible=False)
+
+    sx = fig.add_subplot(gs[:, 1])
+    order = ["none", "T", "P", "QRS"]
+    for name in order:
+        sel = majority == CLASSES.index(name)
+        sx.scatter(pcs[..., a][sel], pcs[..., b][sel], s=7, color=CLASS_COLORS[name], alpha=0.75 if name != "none" else 0.45, lw=0, label=name, zorder=2 if name != "none" else 1)
+    sx.set_xlabel(f"PC {a + 1}", fontsize=11)
+    sx.set_ylabel(f"PC {b + 1}", fontsize=11)
+    sx.tick_params(labelsize=11)
+    sx.set_title(f"All 1872 blocks of the 12 leads, layer {layer}", loc="left", fontsize=13, color=INK)
+    handles = [plt.Line2D([], [], marker="o", ls="", color=CLASS_COLORS[n], markersize=6, label=n) for n in ("P", "QRS", "T", "none")]
+    sx.legend(handles=handles, loc="upper right", fontsize=11, frameon=False, handletextpad=0.2, borderaxespad=0.2)
+    path = OUT / "fig_states.png"
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+    print(f"class R2 of PC1-5 over all blocks: {np.round(r2, 2)}; plotted PC {a + 1} (time) and PC {a + 1} vs PC {b + 1}; explained {np.round(data['explained'], 3)}")
+    return path
+
+
 if __name__ == "__main__":
+    import sys
+
     print("wrote", preprocess_steps())
+    if "--states" in sys.argv:  # path to a downloaded /vol/states/<revision>/115.npy
+        print("wrote", states_projection(Path(sys.argv[sys.argv.index("--states") + 1])))
+    if STATES_CACHE.exists():
+        print("wrote", states_figure())
