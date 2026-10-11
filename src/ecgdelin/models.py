@@ -54,9 +54,10 @@ class LayerBlend(nn.Module):
         super().__init__()
         self.logits = nn.Parameter(torch.zeros(n_layers))
 
-    def forward(self, states: Tensor) -> Tensor:
-        """(b, L, v, n, d) raw states (fp16 or fp32) -> (b, v, n, d) fp32."""
-        out: Tensor = _Blend.apply(torch.softmax(self.logits, 0), normalize_layers(states))
+    def forward(self, states: Tensor, normalized: bool = False) -> Tensor:
+        """(b, L, v, n, d) states -> (b, v, n, d) fp32. ``normalized`` says the caller already applied
+        ``normalize_layers`` (the joint trainer does it once per batch for every head)."""
+        out: Tensor = _Blend.apply(torch.softmax(self.logits, 0), states if normalized else normalize_layers(states))
         return out
 
     def weights(self) -> list[float]:
@@ -77,8 +78,8 @@ class LinearProbe(nn.Module):
         self.blend = LayerBlend(n_layers)
         self.out = nn.Linear(d_in, PATCH * N_CLASSES)
 
-    def forward(self, states: Tensor) -> Tensor:
-        return _to_scores(self.out(self.blend(states)))
+    def forward(self, states: Tensor, normalized: bool = False) -> Tensor:
+        return _to_scores(self.out(self.blend(states, normalized)))
 
 
 class ConvHead(nn.Module):
@@ -92,8 +93,8 @@ class ConvHead(nn.Module):
         self.convs = nn.ModuleList([nn.Conv1d(width, width, 3, padding=1) for _ in range(3)])
         self.out = nn.Linear(width, PATCH * N_CLASSES)
 
-    def forward(self, states: Tensor) -> Tensor:
-        x = F.relu(self.inp(self.blend(states)))  # (b, v, n, width)
+    def forward(self, states: Tensor, normalized: bool = False) -> Tensor:
+        x = F.relu(self.inp(self.blend(states, normalized)))  # (b, v, n, width)
         b, v, n, w = x.shape
         x = x.reshape(b * v, n, w).transpose(1, 2)  # (b * v, width, n)
         for conv in self.convs:

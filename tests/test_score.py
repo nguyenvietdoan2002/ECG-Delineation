@@ -7,7 +7,7 @@ import pytest
 
 from ecgdelin.dataset import LEADS, Recording, Wave
 from ecgdelin.delineate import POINT_TYPES, LeadPoints, empty_points, points_from_waves
-from ecgdelin.score import compare, score
+from ecgdelin.score import compare, compare_seeds, score, seed_averaged_primary
 
 FS = 500
 
@@ -216,6 +216,42 @@ def test_stop_rule_says_yes_only_when_the_paired_difference_clears_zero() -> Non
     assert verdict.f1_diff_ci95[1] < 0
     assert verdict.f1_safeguard_ok is False
     assert verdict.a_wins is False
+
+
+def test_seeds_are_averaged_inside_every_draw_before_the_difference() -> None:
+    truth = beats(EIGHT)
+    recs = [recording(str(i), {"ii": truth}) for i in (1, 2, 3)]
+    tight = {r.id: predictions(ii=jitter(truth, [1, -1] * 4)) for r in recs}  # SD 2 ms
+    loose = {r.id: predictions(ii=jitter(truth, [20, -20] * 4)) for r in recs}  # SD 40 ms
+    exact = {r.id: predictions(ii=truth) for r in recs}  # SD 0
+
+    assert compare_seeds(recs, [tight] * 3, [loose] * 3, n_draws=2000, seed=0).to_dict() == compare(recs, tight, loose, n_draws=2000, seed=0).to_dict()
+
+    # Method a's seeds average to 20 ms against b's 40 ms in every draw, so a wins, although a's loose
+    # seed on its own would only tie with b.
+    verdict = compare_seeds(recs, [exact, loose], [loose], n_draws=2000, seed=0)
+    assert verdict.diff_ci95 == pytest.approx((-20.0, -20.0))
+    assert verdict.a_wins is True
+    assert compare(recs, loose, loose, n_draws=2000, seed=0).a_better is False
+
+    primary, ci = seed_averaged_primary(recs, [exact, loose], n_draws=2000, seed=0)
+    assert primary == pytest.approx(20.0)
+    assert ci == pytest.approx((20.0, 20.0))
+
+
+def test_a_subgroup_without_p_waves_gets_its_primary_over_the_points_it_has() -> None:
+    truth = beats(EIGHT)
+    no_p = [w for w in truth if w.kind != "P"]
+    sinus = recording("1", {"ii": truth}, rhythm="Sinus rhythm")
+    af = recording("2", {"ii": no_p}, rhythm="Atrial fibrillation")
+    jittered = [w for w in jitter(truth, [2, -2] * 4) if w.kind != "P"]  # QRS and T points off by +/-4 ms
+
+    report = score([sinus, af], {"1": predictions(ii=truth), "2": predictions(ii=jittered)}, n_draws=0)
+
+    af_group = report.by_rhythm["af_flutter"]
+    assert np.isnan(af_group.points["P_on"].sd_ms)
+    assert af_group.primary_sd_ms == pytest.approx(4.0)  # QRS onset, QRS offset and T offset only
+    assert report.primary_sd_ms == pytest.approx((0.0 + 0.0 + 3 * np.sqrt(8.0)) / 5)  # all five points over both people
 
 
 def test_failed_leads_and_orphans_are_counted_and_failed_leads_count_as_misses() -> None:

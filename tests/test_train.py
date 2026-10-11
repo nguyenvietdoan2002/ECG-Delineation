@@ -8,8 +8,8 @@ import numpy as np
 import torch
 
 from ecgdelin.dataset import LEADS, Wave
-from ecgdelin.models import LinearProbe
-from ecgdelin.train import TensorSource, TrainConfig, Trainee, evaluate_loss, lead_targets, make_trainee, targets_for, train_jointly
+from ecgdelin.models import LinearProbe, normalize_layers
+from ecgdelin.train import TensorSource, TrainConfig, Trainee, evaluate_loss, lead_targets, make_trainee, predict_classes, targets_for, train_jointly
 
 CPU = torch.device("cpu")
 N_BLOCKS, D = 4, 8  # tiny states: (recordings, 1 layer, 12 leads, 4 blocks, 8) -> 128 samples per lead
@@ -110,3 +110,24 @@ def test_a_run_resumed_from_a_checkpoint_matches_an_uninterrupted_run(tmp_path: 
     assert resumed.history == a.history
     for pa, pb in zip(a.model.parameters(), resumed.model.parameters()):
         assert torch.equal(pa, pb)
+
+
+def test_normalising_the_states_once_per_batch_for_all_models_changes_nothing() -> None:
+    """The joint trainer normalises a batch's layers once and tells every head so (``normalized=True``);
+    this must equal each head normalising on its own, bit for bit."""
+    states, targets = tiny_data(seed=4)
+    config = TrainConfig(lr=1e-2, batch_size=2, max_epochs=5, patience=10)
+    own = trainee("own", config)
+    run([own], states, targets, config)
+
+    torch.manual_seed(0)
+    shared = make_trainee("shared", LinearProbe(n_layers=1, d_in=D), "states", config, normalized=True)
+    train_jointly([shared], {"states": TensorSource(states, transform=normalize_layers)}, targets, range(4), [4, 5], config, seed=0, device=CPU, log=lambda _: None)
+
+    assert shared.history == own.history
+    for pa, pb in zip(own.model.parameters(), shared.model.parameters()):
+        assert torch.equal(pa, pb)
+    assert np.array_equal(
+        predict_classes(own.model, TensorSource(states), [4, 5], 2, CPU),
+        predict_classes(shared.model, TensorSource(states, transform=normalize_layers), [4, 5], 2, CPU, {"normalized": True}),
+    )

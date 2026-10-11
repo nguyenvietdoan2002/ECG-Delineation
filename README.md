@@ -31,17 +31,24 @@ uv run modal run scripts/run_neurokit.py   # M1: NeuroKit2 prominence baseline o
 uv run modal run scripts/run_neurokit.py --rpeaks emrich2023   # paper-faithful variant (FastNVG R-peaks)
 uv run modal run scripts/gpu_tests.py      # the gpu-marked tests (real TimesFM 3) inside a T4 container
 uv run modal run scripts/extract_states.py # M2: TimesFM 3 states for all 200 records into the Volume
-uv run modal run scripts/train_fold.py     # M3: probe, main head and U-Net on fold 0, scored on its validation people
-uv run modal run scripts/train_fold.py --max-epochs 2 --models head   # a smoke run
 uv run modal run scripts/m3_classes.py     # M3 deep dive, step 1: class maps of the fold-0 models on the validation people (CPU)
 uv run python scripts/m3_report.py         # M3 deep dive, step 2: docs/m3-report.md and results/m3/fig_*.png (local)
+uv run modal run scripts/train_fold.py::main --fold 0 --max-epochs 2    # M4 rehearsal: nine models, two epochs, fold 0 (run m4_fold0_smoke)
+uv run modal run --detach scripts/train_fold.py::main --folds 0,1,2,3,4 # M4: head, probe, U-Net x 3 seeds per fold, test-fold predictions
+uv run modal run scripts/train_fold.py::fetch --run m4_fold0            # copy a run's files from the Volume if the client had left
+uv run python scripts/final_report.py                                   # pooled scores, stop-rule verdict, docs/report.md, results/m4/
 ```
+
+The M3 fold-0 run (`results/m3/`, one seed, validation people only) was produced by the earlier form of
+`train_fold.py` at commit `442a4e2`.
 
 The `gpu` tests are deselected locally; the laptop never loads the backbone.
 
 Results: `results/<method>.json` (all metrics, with the Emrich 2024 comparison for lead I),
 `results/m3/<run>.json` (M3 training histories and validation-people scores, with the deep dive in
-[docs/m3-report.md](docs/m3-report.md)) and `results/predictions/<name>.json` (every predicted point). Trained weights stay in the Volume under
+[docs/m3-report.md](docs/m3-report.md)), `results/m4/m4_fold<k>.json` (M4 training histories and
+per-fold test scores, pooled into [docs/report.md](docs/report.md) and `results/m4/summary.json`) and
+`results/predictions/<name>.json` (every predicted point). Trained weights stay in the Volume under
 `/models/<run>/`. References are in [docs/references.md](docs/references.md).
 
 ## Licences

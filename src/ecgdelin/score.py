@@ -333,7 +333,10 @@ def summarize(
             sd_within_ms=float(np.mean(within)) if within else math.nan,
             cse_2sd_ms=CSE_2SD_MS.get(point),
         )
-    primary = float(np.mean([points[p].sd_ms for p in CSE_POINTS]))
+    # All five points exist for any whole test population; a subgroup without P waves (AF/flutter)
+    # is summarised over the points it has, so by-rhythm tables show a number rather than nothing.
+    sds = [points[p].sd_ms for p in CSE_POINTS]
+    primary = float(np.nanmean(sds)) if any(not math.isnan(s) for s in sds) else math.nan
     ci = _ci95(_primary_per_draw(scores, _draw_counts(len(scores), n_draws, seed))) if scores else (math.nan, math.nan)
     miou = {
         kind: _ratio(sum(s.overlap[kind][0] for s in scores), sum(s.overlap[kind][1] for s in scores))
@@ -376,21 +379,62 @@ def score(
     )
 
 
-def compare(
+Predictions = Mapping[str, Mapping[str, LeadPoints]]  # recording id -> lead -> points
+
+
+def _per_seed(recordings: Sequence[Recording], seeds: Sequence[Predictions], tolerances_ms: Sequence[int]) -> list[list[PersonScore]]:
+    return [[score_recording(rec, preds.get(rec.id, {}), tolerances_ms) for rec in recordings] for preds in seeds]
+
+
+def seed_averaged_primary(
     recordings: Sequence[Recording],
-    predictions_a: Mapping[str, Mapping[str, LeadPoints]],
-    predictions_b: Mapping[str, Mapping[str, LeadPoints]],
+    predictions_seeds: Sequence[Predictions],
+    tolerances_ms: Sequence[int] = TOLERANCES_MS,
+    n_draws: int = N_DRAWS,
+    seed: int = 0,
+) -> tuple[float, tuple[float, float]]:
+    """The primary metric averaged over a method's seeds, with its 95% bootstrap interval over people
+    (the metric is computed per seed inside every draw, then averaged; decision 64)."""
+    scores = _per_seed(recordings, predictions_seeds, tolerances_ms)
+    counts = _draw_counts(len(recordings), n_draws, seed)
+    per_draw = np.mean([_primary_per_draw(s, counts) for s in scores], axis=0)
+    point = float(np.mean([summarize(s, tolerances_ms, n_draws=0).primary_sd_ms for s in scores]))
+    return point, _ci95(np.asarray(per_draw))
+
+
+def compare_seeds(
+    recordings: Sequence[Recording],
+    predictions_a: Sequence[Predictions],
+    predictions_b: Sequence[Predictions],
     tolerances_ms: Sequence[int] = TOLERANCES_MS,
     n_draws: int = N_DRAWS,
     seed: int = 0,
 ) -> Verdict:
-    """Paired bootstrap over the same people: does method a beat method b (decision 28)?"""
-    scores_a = [score_recording(rec, predictions_a.get(rec.id, {}), tolerances_ms) for rec in recordings]
-    scores_b = [score_recording(rec, predictions_b.get(rec.id, {}), tolerances_ms) for rec in recordings]
+    """Paired bootstrap over the same people, several seeds per method: in every draw each method's
+    primary metric (and F1 at the loosest tolerance) is computed per seed and averaged over its seeds
+    before the difference is taken (decisions 28 and 64). Does method a beat method b?"""
+    scores_a = _per_seed(recordings, predictions_a, tolerances_ms)
+    scores_b = _per_seed(recordings, predictions_b, tolerances_ms)
     counts = _draw_counts(len(recordings), n_draws, seed)
-    diff = _ci95(_primary_per_draw(scores_a, counts) - _primary_per_draw(scores_b, counts))
     loosest = max(tolerances_ms)
-    f1_diff = _ci95(_f1_per_draw(scores_a, counts, loosest) - _f1_per_draw(scores_b, counts, loosest))
+    primary_a = np.mean([_primary_per_draw(s, counts) for s in scores_a], axis=0)
+    primary_b = np.mean([_primary_per_draw(s, counts) for s in scores_b], axis=0)
+    f1_a = np.mean([_f1_per_draw(s, counts, loosest) for s in scores_a], axis=0)
+    f1_b = np.mean([_f1_per_draw(s, counts, loosest) for s in scores_b], axis=0)
+    diff = _ci95(np.asarray(primary_a - primary_b))
+    f1_diff = _ci95(np.asarray(f1_a - f1_b))
     a_better = diff[1] < 0
     f1_ok = not f1_diff[1] < 0
     return Verdict(diff, a_better, f1_diff, f1_ok, a_better and f1_ok)
+
+
+def compare(
+    recordings: Sequence[Recording],
+    predictions_a: Predictions,
+    predictions_b: Predictions,
+    tolerances_ms: Sequence[int] = TOLERANCES_MS,
+    n_draws: int = N_DRAWS,
+    seed: int = 0,
+) -> Verdict:
+    """Paired bootstrap over the same people, one prediction set per method: does a beat b (decision 28)?"""
+    return compare_seeds(recordings, [predictions_a], [predictions_b], tolerances_ms, n_draws, seed)

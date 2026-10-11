@@ -59,14 +59,23 @@ class Source(Protocol):
 
     def batch(self, idx: Sequence[int], device: torch.device) -> Tensor: ...
 
+    def prepare(self, batch: Tensor) -> Tensor:
+        """Work done once per batch on the device and shared by every model reading this source."""
+        ...
+
 
 class TensorSource:
     """All recordings' inputs in one CPU tensor. On CUDA, batches are gathered into a pinned buffer so
-    the copy to the device can overlap with compute."""
+    the copy to the device can overlap with compute. ``transform`` (for example the per-layer
+    normalisation of TimesFM states) runs once per batch on the device, for all models at once."""
 
-    def __init__(self, data: Tensor) -> None:
+    def __init__(self, data: Tensor, transform: Callable[[Tensor], Tensor] | None = None) -> None:
         self.data = data
+        self.transform = transform
         self._buffers: dict[int, Tensor] = {}
+
+    def prepare(self, batch: Tensor) -> Tensor:
+        return batch if self.transform is None else self.transform(batch)
 
     def batch(self, idx: Sequence[int], device: torch.device) -> Tensor:
         index = torch.as_tensor(list(idx), dtype=torch.long)
@@ -96,6 +105,7 @@ class Trainee:
     bad_epochs: int = 0
     stopped: bool = False
     seconds: float = 0.0  # time spent in this model's forward/backward steps
+    kwargs: dict[str, Any] = field(default_factory=dict)  # passed to every model call (e.g. normalized=True)
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -108,8 +118,8 @@ class Trainee:
         }
 
 
-def make_trainee(name: str, model: nn.Module, source: str, config: TrainConfig) -> Trainee:
-    return Trainee(name, model, source, torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay))
+def make_trainee(name: str, model: nn.Module, source: str, config: TrainConfig, **kwargs: Any) -> Trainee:
+    return Trainee(name, model, source, torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay), kwargs=dict(kwargs))
 
 
 def _batches(idx: Sequence[int], batch_size: int) -> Iterator[list[int]]:
@@ -117,25 +127,29 @@ def _batches(idx: Sequence[int], batch_size: int) -> Iterator[list[int]]:
         yield list(idx[start : start + batch_size])
 
 
-def evaluate_loss(model: nn.Module, source: Source, targets: Tensor, idx: Sequence[int], batch_size: int, device: torch.device) -> float:
+def evaluate_loss(
+    model: nn.Module, source: Source, targets: Tensor, idx: Sequence[int], batch_size: int, device: torch.device, model_kwargs: Mapping[str, Any] | None = None
+) -> float:
     """Mean cross-entropy over all valid samples of the given recordings."""
     model.eval()
     total, count = 0.0, 0
     with torch.no_grad():
         for b in _batches(idx, batch_size):
             y = targets[b].to(device)
-            total += F.cross_entropy(model(source.batch(b, device)), y, ignore_index=IGNORE, reduction="sum").item()
+            total += F.cross_entropy(model(source.prepare(source.batch(b, device)), **(model_kwargs or {})), y, ignore_index=IGNORE, reduction="sum").item()
             count += int((y != IGNORE).sum().item())
     return total / count if count else math.nan
 
 
-def predict_classes(model: nn.Module, source: Source, idx: Sequence[int], batch_size: int, device: torch.device) -> NDArray[np.int8]:
+def predict_classes(
+    model: nn.Module, source: Source, idx: Sequence[int], batch_size: int, device: torch.device, model_kwargs: Mapping[str, Any] | None = None
+) -> NDArray[np.int8]:
     """(len(idx), 12, samples) argmax classes."""
     model.eval()
     outs = []
     with torch.no_grad():
         for b in _batches(idx, batch_size):
-            outs.append(model(source.batch(b, device)).argmax(1).to(torch.int8).cpu())
+            outs.append(model(source.prepare(source.batch(b, device)), **(model_kwargs or {})).argmax(1).to(torch.int8).cpu())
     return np.asarray(torch.cat(outs).numpy(), dtype=np.int8)
 
 
@@ -216,8 +230,8 @@ def train_jointly(
             for t in active:
                 tick = time.perf_counter()
                 if t.source not in inputs:
-                    inputs[t.source] = sources[t.source].batch(b, device)
-                loss = F.cross_entropy(t.model(inputs[t.source]), y, ignore_index=IGNORE)
+                    inputs[t.source] = sources[t.source].prepare(sources[t.source].batch(b, device))
+                loss = F.cross_entropy(t.model(inputs[t.source], **t.kwargs), y, ignore_index=IGNORE)
                 t.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 t.optimizer.step()
@@ -227,7 +241,7 @@ def train_jointly(
 
         for t in active:
             tick = time.perf_counter()
-            val = evaluate_loss(t.model, sources[t.source], targets, val_idx, config.batch_size, device)
+            val = evaluate_loss(t.model, sources[t.source], targets, val_idx, config.batch_size, device, t.kwargs)
             t.seconds += time.perf_counter() - tick
             t.history.append({"epoch": epoch, "train_loss": sums[t.name] / n_batches, "val_loss": val})
             if val < t.best_val:

@@ -5,6 +5,8 @@ signal; both take the argmax class per sample and hand the regions to the decode
 high-passed signal the model saw (decision 58).
 """
 
+from typing import Any
+
 import numpy as np
 import torch
 from numpy.typing import NDArray
@@ -22,12 +24,12 @@ def points_from_classes(classes: NDArray[np.int8], signal: NDArray[np.floating],
     return {lead: regions_to_points(classes[k], np.asarray(signal[k], dtype=np.float64), fs) for k, lead in enumerate(LEADS)}
 
 
-def classes_of(model: nn.Module, inputs: Tensor) -> NDArray[np.int8]:
+def classes_of(model: nn.Module, inputs: Tensor, **kwargs: Any) -> NDArray[np.int8]:
     """One recording's (12, samples) argmax classes from a model's scores for ``inputs`` of batch size 1."""
     device = next(model.parameters()).device
     model.eval()
     with torch.no_grad():
-        return np.asarray(model(inputs.to(device)).argmax(1)[0].to(torch.int8).cpu().numpy(), dtype=np.int8)
+        return np.asarray(model(inputs.to(device), **kwargs).argmax(1)[0].to(torch.int8).cpu().numpy(), dtype=np.int8)
 
 
 class HeadDelineator:
