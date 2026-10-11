@@ -159,8 +159,15 @@ Below stage 4, an accent arrow, "forward hooks read the output of every one of t
 states box: the 1280-vector after each layer for each block of each lead, 20 × 12 × 156 × 1280 per pass,
 forward and reversed joined to 2560 on the next slide.
 
-**Caption:** Every 64 ms block of every lead becomes one 1280-number vector, refined 20 times; a state is
-that vector read after a layer.
+**Highlighted line** (a tinted band under the figure, arrows in the accent colour; it replaced the earlier
+caption, whose definition of a state lives in the states box): 4992 samples per lead → 156 blocks of 32 →
+192 numbers per block (96 values, 96 flags) → residual block → 1280 → 20 × [time attention, lead attention,
+feed-forward].
+
+The 96 flags follow TimesFM 3's own convention: 0 = a real value, 1 = a blank the model must not use. Its
+forecaster sets 0 for observed context and for a covariate's known future, and 1 for padding and for the
+future of the series being forecast; our extractor passes all-zero masks and marks every lead as a target,
+so TimesFM's `_preprocess` itself writes the 1s in the 64-sample slot.
 
 **Spec strip:** 1 block = 32 samples = 64 ms at 500 Hz · width 1280, 16 heads × 80 · RMSNorm before and
 after every sub-block, residual adds · rotary positions on time, none across leads · feed-forward and
