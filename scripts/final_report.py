@@ -203,7 +203,7 @@ def main() -> None:
     w(md_table(["Method", "Params", "Primary SD ms [95% CI]", "Per seed", "Mean F1@150, CSE points %", "mIoU", "Sinus", "AF/flutter"], rows))
     w("")
     w("Sinus and AF/flutter columns: the primary SD within each rhythm group, averaged over seeds; AF people have no P marks, so their P points carry no error SD and the group's primary is over QRS onset, QRS offset and T offset only.\n")
-    w(f"![points]({Path('..') / figdir.relative_to(REPO) / figs['points']})\n" if figdir.is_relative_to(REPO) else f"![points]({figs['points']})\n")
+    w(f"![points]({(Path('..') / figdir.relative_to(REPO) / figs['points']).as_posix()})\n" if figdir.is_relative_to(REPO) else f"![points]({figs['points']})\n")
 
     w("## 3. Per point (mean over seeds)\n")
     rows = []
@@ -231,7 +231,7 @@ def main() -> None:
     w("")
 
     w("## 5. Per fold (information only)\n")
-    w(f"![folds]({Path('..') / figdir.relative_to(REPO) / figs['folds']})\n" if figdir.is_relative_to(REPO) else f"![folds]({figs['folds']})\n")
+    w(f"![folds]({(Path('..') / figdir.relative_to(REPO) / figs['folds']).as_posix()})\n" if figdir.is_relative_to(REPO) else f"![folds]({figs['folds']})\n")
     rows = [[f"fold {k}", len(folds.folds[k].test)] + [fmt(per_fold[n][i], 2) for n in METHODS] + [f"{per_fold['head'][i] - per_fold['unet'][i]:+.2f}"] for i, k in enumerate(fold_list)]
     w(md_table(["Fold", "Test people", *(f"{LABEL[n]}" for n in METHODS), "Head minus U-Net"], rows))
     w("")
