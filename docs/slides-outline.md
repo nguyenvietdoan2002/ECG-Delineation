@@ -11,6 +11,10 @@ Numbers: every result number comes from `docs/report.md` and `results/m4/summary
 seeds, 200 people). M3 numbers appear only on slide 28 and are labelled development-only. Speaker notes are
 what the presenter says; bullets are what the slide shows.
 
+Designed on 2026-10-11 as a claude.ai Design canvas, one 1920 x 1080 artboard per slide in the agreed
+look (Option A, Clinical ledger: the figures' light surface, IBM Plex Sans and Mono, one blue accent):
+https://claude.ai/artifact/EBBfxAa8RPGVTWedYDWg4t (private until shared from the page).
+
 Visual assets to reuse (all PNG, 150 dpi, light surface):
 
 | File | Used on |
