@@ -25,8 +25,8 @@ Step 1 uses **LUDB only**. QTDB and MIMIC-IV-ECG are out of scope until step 1's
   (sinus / AF or flutter / other) from the header `Rhythm:` line. Folds are saved to `splits/` and
   never regenerated. Within each training fold, 20% of its people form the validation set used for
   early stopping; the test fold is never used for any choice.
-- **Learning curve:** within each training fold, also train on 25% and 50% of its people
-  (nested subsets, fixed by seed).
+- **Learning curve:** removed from step 1 on 2026-10-11 (decision 61). The nested 25% and 50%
+  subsets of each training fold stay in `splits/` for a possible later step.
 - **Marked span:** per lead, only the span from the first to the last mark is used for training and
   scoring; the first and last beat or two are unmarked (marked span is 4.4–8.8 s, median 7.3 s).
 - **Incomplete marks:** 134 peaks lack their `(` or `)`. Those waves are excluded from labels and
@@ -61,8 +61,9 @@ Step 1 uses **LUDB only**. QTDB and MIMIC-IV-ECG are out of scope until step 1's
   5. blocks laid end to end → 4992 samples × 4 scores → argmax → per-sample label.
 - **Also reported (a):** linear probe: the same layer weighting, then one linear layer
   2560 → 32 × 4.
-- **Ablations:** forward pass only (no reversed pass); per-layer linear probe (one probe per layer,
-  fold 0 only) to show where wave information lives.
+- **Ablations:** removed from step 1 on 2026-10-11 (decision 61). Forward pass only (no reversed
+  pass) and a per-layer linear probe (one probe per layer, fold 0 only) may be run as a separate step
+  after the stop-rule verdict.
 
 ### 2. U-Net control
 
@@ -107,7 +108,8 @@ are then frozen in a tagged commit before the final 5-fold × 3-seed runs.
 - GPU containers can be preempted: extraction saves per recording and resumes; training
   checkpoints to the Volume; long runs use `modal run --detach`.
 - Expected cost of one full step-1 run: extraction < $0.50, heads $2–4, U-Nets $4–7, CPU cents,
-  storage $0 (first 1 TiB/month free): about $7–12. Stored states are deleted after the final runs.
+  storage $0 (first 1 TiB/month free): about $7–12. Stored states are kept after the final runs
+  (decision 63, amending decision 30).
 - The laptop runs the unit tests only (CPU PyTorch); the same suite can also run on Modal CPU.
 
 ## Output format
@@ -129,14 +131,16 @@ Per lead, a dict with NeuroKit2's keys: `ECG_P_Onsets`, `ECG_P_Peaks`, `ECG_P_Of
   CSE 2σ limits for reference: 10.2, 12.7, 6.5, 11.6, 30.6 ms.
 - **Safeguard:** F1 at ±150 ms must not be lower than the comparator's beyond its CI.
 - **Also reported:** Se, PPV, F1 at ±150 ms and ±40 ms; mean error per point; SD averaged within
-  recordings (comparable with Emrich et al. 2024); region mIoU; all of these split by rhythm;
-  learning curve (25/50/100%).
+  recordings (comparable with Emrich et al. 2024); region mIoU; all of these split by rhythm.
+  The learning curve (25/50/100%) was removed from step 1 (decision 61).
 
 ## Stop rule (fixed before any experiment)
 
-- **Test:** paired bootstrap over people. Draw 200 people with replacement 10,000 times; each time
-  compute the primary metric for the TimesFM head and for the U-Net on the same drawn people
-  (averaged over the 3 seeds) and take the difference. TimesFM beats the U-Net if the 95% interval
+- **Test:** paired bootstrap over people. Every person's predictions come from the models of the
+  fold that held that person out, so all 200 people are pooled (decision 64). Draw 200 people with
+  replacement 10,000 times; each time compute the primary metric for the TimesFM head and for the
+  U-Net on the same drawn people, once per seed and averaged over the 3 seeds, and take the
+  difference. The five per-fold differences are reported for information only. TimesFM beats the U-Net if the 95% interval
   of the difference lies entirely on the "TimesFM better" side of zero. The F1 safeguard uses the
   same procedure: the 95% interval of the F1 difference must not lie entirely on the "TimesFM
   worse" side.
@@ -154,9 +158,12 @@ Built milestone by milestone, test-first, one commit per step, a report to the u
   that lead-I results land near Emrich et al. 2024's published table (F1 98.3–99.8%, error SD
   6–16 ms).
 - **M2 TimesFM states:** extraction to the Volume; causality and forward/reversed alignment checks.
-- **M3 Models on fold 0:** probe, main head, U-Net trained on fold 0 as a sanity check.
-- **M4 Final runs:** frozen tagged commit, then 5 folds × 3 seeds, ablations, learning curve,
-  report and stop-rule verdict.
+- **M3 Models on fold 0:** probe, main head, U-Net trained on fold 0 as a sanity check, followed by
+  a deep-dive report on the validation people (`docs/m3-report.md`, decision 60).
+- **M4 Final runs:** M4 code with tests, a two-epoch rehearsal of the whole pipeline on fold 0, the
+  frozen tag `step1-frozen`, then 5 folds × 3 seeds of head, probe and U-Net, `docs/report.md` and
+  the stop-rule verdict (decision 65). Ablations and the learning curve are a separate later step,
+  if wanted (decision 61).
 
 ## Project layout
 
@@ -166,7 +173,11 @@ Built milestone by milestone, test-first, one commit per step, a report to the u
   metrics, Modal app
 - `tests/` — written first
 - `scripts/` — extract states, train, evaluate (each a `modal run` entry point)
-- `splits/`, `results/` (one JSON per run), `docs/plan.md`, `docs/spec.md`, `docs/decision-log.md`
+- `splits/`, `results/` (one JSON per run), `docs/plan.md`, `docs/spec.md`, `docs/decision-log.md`,
+  `docs/m3-report.md` (M3 deep dive), `docs/report.md` (generated from the result JSONs) and
+  `docs/paper.md` (the draft, decision 66),
+  `docs/m3-report.md` (M3 deep dive), `docs/report.md` (generated from the result JSONs) and
+  `docs/paper.md` (the draft, decision 66)
 
 Local dependencies: CPU PyTorch, `neurokit2==0.2.13`, `wfdb`, `scipy`, `numpy`, `modal`;
 `timesfm3` made importable from `Meddies/timesfm/src` through a `.pth` file (an editable install

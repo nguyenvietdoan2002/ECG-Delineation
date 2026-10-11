@@ -51,7 +51,8 @@ confidence intervals and a yes/no answer from the stop rule:
 7. As a researcher, I want 5-fold person-level splits balanced by rhythm, saved to disk once, so that
    every experiment uses identical folds and no person appears in both training and test.
 8. As a researcher, I want fixed nested 25% and 50% subsets of each training fold, so that I can draw
-   a learning curve showing whether more data would help.
+   a learning curve showing whether more data would help. *(The subsets are saved; the learning curve
+   itself was removed from step 1 on 2026-10-11, decision 61.)*
 9. As a researcher, I want a validation subset carved by person from each training fold, so that
    early stopping never touches the test fold.
 10. As a researcher, I want identical preprocessing (0.5 Hz high-pass) for every trained model, so
@@ -82,8 +83,9 @@ confidence intervals and a yes/no answer from the stop rule:
 19. As a researcher, I want a one-layer linear probe on the same states, so that I can report how
     much wave information the states contain on their own.
 20. As a researcher, I want a forward-only variant, so that I can measure what the reversed pass adds.
+    *(Removed from step 1 on 2026-10-11, decision 61; a possible later step.)*
 21. As a researcher, I want a per-layer probe, so that I can show which TimesFM layers hold wave
-    information.
+    information. *(Removed from step 1 on 2026-10-11, decision 61; a possible later step.)*
 22. As a researcher, I want a 12-lead U-Net trained with the same folds, labels, loss, budget and
     seeds, so that it is a fair control for "is it TimesFM, or just training on LUDB?".
 23. As a researcher, I want NeuroKit2 0.2.13 `prominence` run one lead at a time with its own cleaning
@@ -149,8 +151,9 @@ confidence intervals and a yes/no answer from the stop rule:
 45. As a Meddies team member, I want the TimesFM 3 licence restrictions noted in the repo, so that
     nobody distributes trained heads or uses results commercially.
 46. As a researcher, I want the project under local git with one commit per step and a tagged
-    "frozen" commit before the final runs, so that every number traces to code that cannot have been
-    tuned after seeing test results.
+    "frozen" commit (`step1-frozen`, after a two-epoch rehearsal of the whole pipeline on fold 0)
+    before the final runs, so that every number traces to code that cannot have been tuned after
+    seeing test results.
 47. As a researcher, I want the work built milestone by milestone (M0 foundations, M1 scorer +
     NeuroKit2, M2 states, M3 models on fold 0, M4 final runs) with a report after each, so that I can
     check results before the next stage starts.
@@ -199,7 +202,7 @@ confidence intervals and a yes/no answer from the stop rule:
 - **State cache.** Stored per recording in the Modal Volume in fp16, all 20 layers, both passes
   (183 MB per recording, 36.6 GB total), keyed by checkpoint revision so a changed checkpoint
   invalidates it. A probe on record 1 found a maximum magnitude of 865 (fp16 limit 65,504) and a
-  round-trip error of ≈ 2 × 10⁻⁴. Deleted after step 1's final runs.
+  round-trip error of ≈ 2 × 10⁻⁴. Kept after step 1's final runs (decision 63).
 - **Compute.** All experiment steps run on Modal: CPU functions for loading, splits, NeuroKit2 and
   scoring; T4 GPU functions for extraction, training and inference. One Volume (`ecg-delineation`)
   holds LUDB, the TimesFM weights, states, checkpoints, weights, predictions and result JSONs;
@@ -207,9 +210,11 @@ confidence intervals and a yes/no answer from the stop rule:
   PyTorch 2.14.1 with CUDA 13, NeuroKit2 0.2.13) and copy `timesfm3` from the TimesFM checkout. Head
   training uses one container per fold with the fold's states in RAM and all seeds/variants trained
   jointly over one data stream. Training checkpoints to the Volume; long runs are detached.
-- **Stop-rule test.** Paired bootstrap over people: 10,000 draws of 200 people with replacement; per
-  draw, the primary metric of each model (averaged over seeds) on the same people, and their
-  difference. TimesFM wins if the 95% interval of the difference lies entirely on its side of zero.
+- **Stop-rule test.** Paired bootstrap over people: every person's predictions come from the models
+  of the fold that held them out, so all 200 people are pooled; 10,000 draws of 200 people with
+  replacement; per draw, the primary metric of each model on the same people, computed per seed and
+  averaged over the 3 seeds, and their difference. The five per-fold differences are reported for
+  information only (decision 64). TimesFM wins if the 95% interval of the difference lies entirely on its side of zero.
   The F1 safeguard uses the same procedure in the other direction.
 - **Results.** One JSON file per run, carrying everything needed to rebuild tables.
 - **Primary metric and stop rule** are as in the plan. They are fixed and must not change after any
@@ -261,6 +266,8 @@ confidence intervals and a yes/no answer from the stop rule:
 - NeuroKit2 methods other than `prominence`.
 - Upsampling or downsampling (500 Hz only).
 - Data augmentation and hyperparameter search.
+- The forward-only ablation, the per-layer probes and the learning curve (removed from step 1 on
+  2026-10-11, decision 61; a possible later step after the verdict).
 - Running experiments on the local GPU.
 - Real-time or streaming use, clinical deployment, or any commercial use.
 - Publishing trained heads (forbidden by the TimesFM 3 licence).
