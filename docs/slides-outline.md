@@ -316,18 +316,26 @@ slide said the opposite).
 all 12 leads with a 0.5 Hz zero-phase high-pass over the full 10 s, then keeps the first 4992 samples. Both
 trained models get exactly this input.
 
-**Pipeline, shared steps** (steps 2 to 5 on a band labelled `preprocess.py · prepare(signal, fs)`):
+**Pipeline, shared steps** (steps 2 to 5 on a band labelled `preprocess.py · prepare(signal, fs)`; short
+author-year references inside each box):
 
-1. Read in millivolts (`dataset.py`): WFDB record → 12 × 5000 samples at 500 Hz, leads selected by name.
-   PhysioNet: Goldberger et al. 2000; LUDB: Kalyakulina et al. 2020.
-2. Mirror padding: 6 s at each end, reflected (`padtype="even"`, `padlen=3000`), so the filter starts and
-   ends on real-looking signal. SciPy, Virtanen et al. 2020; decision 51.
-3. Butterworth high-pass: 0.5 Hz, order 5, second-order sections; removes baseline wander. Butterworth 1930;
-   cutoff and order as NeuroKit2's default cleaning, Makowski et al. 2021.
-4. Forward, then backward (`sosfiltfilt`): zero phase, so wave edges do not move. Kormylo & Jain 1974; a
-   low-frequency cutoff up to 0.67 Hz is acceptable for zero-phase digital filters, Kligfield et al. 2007.
-5. Unpad, then crop: drop the padding, keep samples 0 to 4991 (156 blocks of 32), float32. Block length
-   from TimesFM, Das et al. 2024; decision 24.
+1. Read in millivolts (`dataset.py`): 12 × 5000 samples at 500 Hz. Goldberger 2000 · Kalyakulina 2020.
+2. Mirror padding: 6 s mirrored onto each end, 10 s → 22 s (`padtype="even"`, `padlen=3000`, so 3000 +
+   5000 + 3000 samples). SciPy, Virtanen 2020 · decision 51.
+3. Butterworth high-pass: 0.5 Hz, order 5, second-order sections; removes baseline wander. Butterworth 1930 ·
+   same cutoff and order as NeuroKit2's default cleaning.
+4. Same filter, backwards (`sosfiltfilt`): the second pass runs over the time-reversed output, which cancels
+   the first pass's delay exactly: zero phase. Kormylo & Jain 1974 · Kligfield 2007 (up to 0.67 Hz is
+   acceptable for zero-phase digital filters).
+5. Drop padding, crop: 22 s → 10 s → the first 4992 samples (156 × 32; the last 8 samples, 16 ms, are
+   dropped). Das 2024 · decision 24.
+
+**Figure under the pipeline** (`results/deck/fig_preprocess_steps.png`, made by `scripts/deck_figures.py`;
+the script checks that its padded two-way filtering reproduces `preprocess.highpass` exactly): left, record
+91, lead II, padded to 22 s with the mirrored 6 s hatched at each end, the raw trace drifting by about
+0.7 mV and the trace after steps 3 and 4 flat, with "step 5 keeps 0 to 9.98 s: the first 4992 samples";
+right, "Why step 4: one way pulls ST and T down": one beat filtered one way only (orange) against both ways
+(black), with the cardiologists' QRS and T marks shaded.
 
 **Branches:** the shared output feeds both trained models ("the same input for both trained models").
 
@@ -340,9 +348,10 @@ trained models get exactly this input.
   al. 2022, applied causally), → TimesFM 3 states (slides 7 and 8).
 
 **Footer:** tests/test_preprocess.py: drift is removed, a 10 Hz wave passes unchanged and undelayed,
-filtering comes before the crop · no resampling, no augmentation · decisions 24, 51, 55.
+filtering comes before the crop · no resampling, no augmentation · figure: scripts/deck_figures.py. The
+strip of full references at the bottom of the slide was removed on request; they stay listed here.
 
-**References:**
+**References** (for the speaker, not on the slide):
 - Butterworth S. On the theory of filter amplifiers. Experimental Wireless and the Wireless Engineer
   7:536–541, 1930.
 - Kormylo JJ, Jain VK. Two-pass recursive digital filter with zero phase shift. IEEE Transactions on

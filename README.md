@@ -38,6 +38,7 @@ uv run modal deploy scripts/train_fold.py                               # M4: de
 uv run python scripts/launch_m4.py results/m4/calls.json                # ... head, probe, U-Net x 3 seeds per fold, test-fold predictions
 uv run modal run scripts/train_fold.py::fetch --run m4_fold0            # copy a finished run's files from the Volume
 uv run python scripts/final_report.py                                   # pooled scores, stop-rule verdict, docs/report.md, results/m4/
+uv run python scripts/deck_figures.py                                   # deck illustrations, results/deck/
 ```
 
 The M3 fold-0 run (`results/m3/`, one seed, validation people only) was produced by the earlier form of
