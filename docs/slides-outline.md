@@ -395,17 +395,19 @@ the head can train on them without running TimesFM again.
 
 **Figure** (`results/deck/fig_states.png`, made by `scripts/deck_figures.py` from
 `results/deck/states_pca_115_layer5.npz`, a 5-component projection computed once from the stored states of
-record 115 with `--states <downloaded 115.npy>`): left, record 115, lead II, the ECG with the cardiologists'
-P, QRS and T marks shaded, and under it principal component 1 of the layer-5 states, one value per 64 ms
-block; right, the 1338 labelled blocks of the 12 leads by principal components 1 and 3 (fitted on all
-1872 blocks; the 534 outside the marked spans have no mark and are not drawn), coloured by each block's
-majority mark: QRS far right, T at the bottom, P in between, unlabelled blocks on the left. Principal
-component 1 alone accounts for 73% of the variance between the four block types over all 12 leads (82% in
-lead II); layer 5 is also the layer the linear probe weighted most.
+record 115 with `--states <downloaded 115.npy>`): top left, record 115, lead II, the ECG with the
+cardiologists' P, QRS and T marks shaded; bottom left, frozen TimesFM's layer-5 state of each 64 ms block
+squeezed to one number (principal component 1), drawn as 156 flat steps because TimesFM gives one state per
+32-sample block, with no shading, only dashed lines at the cardiologists' QRS marks and "unmarked beat" at
+the first and last beats; right, the 1338 labelled blocks of the 12 leads by principal components 1 and 3
+(fitted on all 1872 blocks; the 534 outside the marked spans have no mark and are not drawn), coloured by
+each block's majority mark: QRS far right, T at the bottom, P in between, blocks with no wave on the left.
+Principal component 1 alone accounts for 73% of the variance between the four block types over all 12 leads
+(82% in lead II); layer 5 is also the layer the linear probe weighted most.
 
-**Caption:** What a stored state holds: principal component 1 is computed from the states alone, with no
-labels, and still spikes at every QRS, even at the first and last beats, which the cardiologists left
-unmarked. The colours are the marks, added afterwards.
+**Caption:** What a stored state holds: one number per 64 ms block from frozen TimesFM's layer-5 states,
+computed with no labels, jumps at every QRS, even at the first and last beats, which the cardiologists left
+unmarked. The shading, dashed lines and colours are the cardiologists' marks, added only for comparison.
 
 **Footer:** tests: stub backbone on the laptop; the real model on a T4 checks shapes, alignment and
 causality · checkpoint revision 43046b85 · decisions 50 to 53, 63 · figure: scripts/deck_figures.py.

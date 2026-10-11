@@ -169,19 +169,26 @@ def states_figure(record: str = "115", lead: str = "ii") -> Path:
     tb = np.arange(157) * 32 / rec.fs
 
     fig = plt.figure(figsize=(16.96, 4.4), dpi=200)
-    gs = GridSpec(2, 2, width_ratios=[2.3, 1], height_ratios=[1, 1], wspace=0.10, hspace=0.12, left=0.04, right=0.99, top=0.88, bottom=0.12, figure=fig)
+    gs = GridSpec(2, 2, width_ratios=[2.3, 1], height_ratios=[1, 1], wspace=0.10, hspace=0.42, left=0.04, right=0.99, top=0.90, bottom=0.10, figure=fig)
     ax = fig.add_subplot(gs[0, 0])
     px = fig.add_subplot(gs[1, 0], sharex=ax)
+    marked = [s for w in rec.marks[lead] for s in (w.onset, w.peak, w.offset) if s is not None]
     for w in rec.marks[lead]:
         if w.onset is not None and w.offset is not None:
-            for axis in (ax, px):
-                axis.axvspan(w.onset / rec.fs, (w.offset + 1) / rec.fs, color=CLASS_TINTS[w.kind], lw=0, zorder=0)
+            ax.axvspan(w.onset / rec.fs, (w.offset + 1) / rec.fs, color=CLASS_TINTS[w.kind], lw=0, zorder=0)
+        if w.kind == "QRS":  # in the state panel, only thin guides at the cardiologists' QRS marks
+            px.axvline(w.peak / rec.fs, color="#8a8378", lw=0.9, ls=(0, (4, 3)), zorder=1)
     ax.plot(t, sig, color=INK, lw=0.9, zorder=2)
     ax.set_ylabel("mV", fontsize=11)
     ax.tick_params(labelbottom=False, labelsize=11)
     ax.grid(axis="x", visible=False)
-    ax.set_title(f"Record {record}, lead {lead.upper()}: the ECG with the cardiologists' marks, and one number from its stored states", loc="left", fontsize=13, color=INK)
+    ax.set_title(f"Record {record}, lead {lead.upper()}: the ECG, with the cardiologists' marks shaded", loc="left", fontsize=13, color=INK)
     px.step(tb, np.append(pc, pc[-1]), where="post", color=INK, lw=1.3, zorder=2)
+    px.set_title(f"Frozen TimesFM's state per 64 ms block (layer {layer}) as one number, no labels · dashed: QRS marks", loc="left", fontsize=12, color=INK)
+    for lo, hi in ((0, min(marked)), (max(marked) + 1, N_SAMPLES)):  # beats the cardiologists left unmarked
+        if hi - lo > rec.fs // 4:
+            r = lo + int(np.argmax(sig[lo:hi]))
+            px.annotate("unmarked beat", (r / rec.fs, pc[r // 32]), xytext=(0, 6), textcoords="offset points", ha="center", va="bottom", fontsize=10.5, color=INK2)
     px.set_ylabel(f"layer {layer}, PC {a + 1}", fontsize=11)
     px.tick_params(labelsize=11)
     px.set_xlim(0, N_SAMPLES / rec.fs)
