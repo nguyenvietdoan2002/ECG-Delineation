@@ -243,6 +243,10 @@ M3 fold-0 models, M4 final runs.
 
 ## 10. `dataset.py`: reading LUDB
 
+**Main function (highlighted band under the title):** `load_record(root, id) → Recording`: reads one LUDB
+record, its 12 leads in millivolts, the rhythm from the header, and every cardiologist mark, lead by lead.
+The bullet that repeated it was removed.
+
 **Visual:** the `Recording` dataclass fields and a `Wave` example.
 
 **Bullets:**
@@ -258,6 +262,15 @@ silent lead swap would corrupt every multi-lead model without any error. Incompl
 with `None` sides, and it is the labels module that decides what to do with them.
 
 ## 11. `labels.py`: from marks to training targets
+
+**Main function (highlighted band under the title):** `labels_for(waves, n) → Labels(classes, mask)`: turns
+the cardiologists' marks of one lead into one label per sample. Every sample from a wave's onset to its
+offset gets that wave's class, the rest is none, and a mask marks the samples that count. The bullet that
+repeated it was removed.
+
+**Real example (box under the strip):** record 115, lead II: the first QRS is marked from sample 913 to 970,
+so those 58 samples, 116 ms, are labelled QRS. Only samples 841 to 4384 count, from the first mark to the
+last; the other 1456 of 5000 are masked.
 
 **Visual:** a strip of samples coloured by class with the mask shown as a grey band, including an
 incomplete wave's masked gap.
