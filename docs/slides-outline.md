@@ -1,7 +1,7 @@
 # Slide outline: "Frozen TimesFM 3 states for ECG wave delineation: what we built and what we found"
 
-Brief for the deck, agreed on 2026-10-11. 39 slides (36 agreed on 2026-10-11, slides 17 to 19 added on
-2026-10-12) for a 60-minute live talk in English, for
+Brief for the deck, agreed on 2026-10-11: a 60-minute live talk in English, now 38 slides (36 agreed,
+then slides 17 to 19 added on 2026-10-12, which absorbed the old `models.py` slide), for
 Meddies teammates who know machine learning but not TimesFM 3, LUDB or ECG delineation. Thematic order:
 question, grounding, pipeline, data, processing, models, baseline, training, decoding, evaluation, tests,
 rigor, results, limits, process, close. Every source file and script is walked in the main flow. Terms are
@@ -9,7 +9,7 @@ defined on the slide where they first matter. Figures are the repository's PNGs.
 from commit `e107f87` (tag `step1-frozen` plus the post-freeze launch tooling and results).
 
 Numbers: every result number comes from `docs/report.md` and `results/m4/summary.json` (five folds, three
-seeds, 200 people). M3 numbers appear only on slide 31 and are labelled development-only. Speaker notes are
+seeds, 200 people). M3 numbers appear only on slide 30 and are labelled development-only. Speaker notes are
 what the presenter says; bullets are what the slide shows.
 
 Designed on 2026-10-11 as a claude.ai Design canvas, one 1920 x 1080 artboard per slide in the agreed
@@ -20,17 +20,17 @@ Visual assets to reuse (all PNG, 150 dpi, light surface):
 
 | File | Used on |
 |---|---|
-| `results/m3/fig_overlay_typical.png` | 6, 35 |
-| `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 35 |
-| `results/m3/fig_training.png` | 23 |
-| `results/m3/fig_per_lead.png` | 33 |
-| `results/m3/fig_layer_weights.png` | 34 |
-| `results/m3/fig_qrs_peak.png` | 31 |
-| `results/m4/fig_points.png` | 33 |
-| `results/m4/fig_folds.png` | 32 |
+| `results/m3/fig_overlay_typical.png` | 6, 34 |
+| `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 34 |
+| `results/m3/fig_training.png` | 22 |
+| `results/m3/fig_per_lead.png` | 32 |
+| `results/m3/fig_layer_weights.png` | 33 |
+| `results/m3/fig_qrs_peak.png` | 30 |
+| `results/m4/fig_points.png` | 32 |
+| `results/m4/fig_folds.png` | 31 |
 
 New diagrams to draw (described where they appear): D1 pipeline (slide 9), D2 state extraction (slide 8),
-D3 three architectures (slide 16), D4 scoring chain (slides 25 to 27), D5 annotated beat (slide 4),
+D3 three architectures (slide 16), D4 scoring chain (slides 24 to 26), D5 annotated beat (slide 4),
 D6 to D8 one architecture each, with its code (slides 17 to 19).
 
 ---
@@ -118,7 +118,7 @@ cardiologists disagree about where a T wave ends.
 and confidence intervals from a bootstrap over people, never over beats. The unmarked first and last beats
 are a trap: a model that finds a real P wave there must not be punished, so those samples are masked out
 of both training and scoring. The one-sample peak offset was discovered in the M3 deep dive and comes
-back on slide 31.
+back on slide 30.
 
 ## 6. A real LUDB record
 
@@ -464,71 +464,28 @@ into per-sample labels: the last layer emits four scores for each of the 32 samp
 
 ## 17. Linear probe: architecture and code
 
-Added on 2026-10-12 so the audience can check each architecture against its code. Slides 17 to 19 share
-one layout: a header band with the main class and its learned-parameter count, the architecture drawn
-as boxes with real shapes and per-box counts (learned boxes outlined in the model's colour), and on the
-right a numbered snapshot of `src/ecgdelin/models.py` at tag `step1-frozen` (commit `2f3afc5`; the file
-is unchanged since).
+Added on 2026-10-12 so the audience can check each architecture against its code; the old slide on
+`models.py` (normalisation, the layer blend, `_to_scores`) was folded into slides 17 to 19 the same day.
+The three slides share one layout: a header band with the main class and its learned-parameter count;
+the architecture as a pipeline of boxes with real shapes, per-box counts and the code lines each box
+comes from, learned boxes outlined in the model's colour; and on the right a numbered snapshot of
+`src/ecgdelin/models.py` at tag `step1-frozen` (commit `2f3afc5`; the file is unchanged since). A "⋮"
+row marks lines shown on a sibling slide.
 
-**Visual:** D6: five boxes top to bottom, learned ones in green: stored TimesFM states (20 layers,
-12 leads, 156 blocks, 2560), float16 → `LayerBlend`, 20 learned weights → linear 2560 → 128, 327,808
-learned → `_to_scores`, a fixed reshape, 128 = 32 samples × 4 classes, → (4, 12, 4992) → argmax over
-the 4 classes → (12, 4992). Code: lines 50 to 82 (`LayerBlend`, `_to_scores`, `LinearProbe`).
+**Visual:** D6: six boxes top to bottom, learned ones in green. Stored TimesFM states (20 layers,
+12 leads, 156 blocks, 2560), float16 → `normalize_layers`, nothing learned, lines 24–29: each layer's
+2560-vector to mean 0 and variance 1 in fp16, run once per batch by the trainer (`normalized=True`)
+→ `LayerBlend`, 20 learned weights, lines 50–64: softmax over 20 logits, then a weighted sum of the
+layers → (12, 156, 2560), ELMo's scalar mix, the sum computed in `_Blend` (slide 18) → linear
+2560 → 128, 327,808 learned, line 79 → `_to_scores`, a fixed reshape, lines 67–70: 128 = 32 samples
+× 4 classes, blocks laid end to end → (4, 12, 4992) → argmax over the 4 classes, fixed, outside the
+model → (12, 4992). Code: lines 20–29 (`count_parameters`, `normalize_layers`) and 50–82
+(`LayerBlend`, `_to_scores`, `LinearProbe`); lines 30–49 (`_Blend`) are on slide 18.
 
-**Header band:** `LinearProbe(n_layers=20, d_in=2560)`: 327,828 learned numbers. It reads one 64 ms
-block's stored state at a time.
+**Header band:** `LinearProbe(n_layers=20, d_in=2560)`: 327,828 learned numbers, as `count_parameters`
+reports. It reads one 64 ms block's stored state at a time.
 
-**Notes:** The counts are there to be checked: 20 blend logits, then 2560 × 128 weights and 128 biases,
-327,828 in all. The probe never sees a neighbouring block; whatever it knows about context comes from
-TimesFM's own attention inside the stored states.
-
-## 18. Main head: architecture and code
-
-**Visual:** D7: seven boxes, learned ones in blue: stored states → `LayerBlend` (20) → linear
-2560 → 128 and ReLU (327,808) → (12, 156, 128) → three Conv1d of width 3 with ReLU, 128 → 128 along
-each lead's blocks (147,840; ±3 blocks, about ±190 ms) → linear 128 → 128 (16,512) → `_to_scores`
-→ (4, 12, 4992) → argmax → (12, 4992). Code: lines 85 to 103 (`ConvHead`).
-
-**Header band:** `ConvHead(n_layers=20, d_in=2560, width=128)`: 492,180 learned numbers. The probe's
-path plus three convolutions, so each block sees 3 neighbours on each side.
-
-**Notes:** The convolutions run along the block axis of one lead at a time, with the same weights for
-all 12 leads: lines 98 and 99 fold the leads into the batch before the convolutions and unfold them
-after. 20 + 327,808 + 3 × 49,280 + 16,512 = 492,180.
-
-## 19. U-Net: architecture and code
-
-**Visual:** D8: the U drawn as boxes, learned ones in orange. Input 12 × 4992, each lead standardised
-→ encoder ConvBlocks 12 → 16, 16 → 32, 32 → 64, 64 → 128 at lengths 4992, 2496, 1248, 624, a
-max-pool (÷2) between them → bottleneck ConvBlock 128 → 256 at length 312 → decoder ConvBlocks
-256 → 128, 128 → 64, 64 → 32, 32 → 16, each after a transposed convolution (×2) → 1 × 1 conv 16 → 48
-= 12 leads × 4 classes. Dashed skip arrows join each encoder level to the decoder level of the same
-length. Every box and every ×2 carries its learned count. Code: lines 106 to 148 (`_ConvBlock`,
-`UNet1D`).
-
-**Header band:** `UNet1D(n_leads=12, channels=(16, 32, 64, 128, 256), kernel=9)`: 1,859,104 learned
-numbers. It reads the filtered signal itself; TimesFM is not involved.
-
-**Notes:** A ConvBlock is Conv1d of width 9, BatchNorm and ReLU, twice. Each decoder block reads the
-upsampled path and the encoder's skip side by side, so the lowest one takes 128 + 128 = 256 channels.
-Four halvings need a length divisible by 16, and 4992 = 16 × 312. The 48 output channels are reshaped
-to (4 classes, 12 leads, 4992), so the U-Net shares the heads' loss, decoder and scorer. The counts add
-up: encoder 295,776, bottleneck 886,272, decoder blocks 588,960, transposed convolutions 87,280,
-output 816.
-
-## 20. `models.py` in detail
-
-**Visual:** code snippet S1 (below); a small bar chart hint of the learned layer weights.
-
-**Bullets:**
-- `normalize_layers`: every layer's 2560-vector to zero mean, unit variance, no learned affine, in fp16
-  (residual-stream magnitudes grow with depth; max 1080)
-- `LayerBlend`: softmax over 20 learned logits, weighted sum of the normalised layers (ELMo's scalar mix);
-  `_Blend` is a custom autograd function that keeps only the fp16 input for the backward pass
-- `_to_scores` reshapes (b, 12, 156, 128) into (b, 4, 12, 4992): blocks laid end to end
-- `UNet1D`: standardises each lead in `forward`, requires a length divisible by 16
-
-**Snippet S1, `src/ecgdelin/models.py`:**
+**Snippet S1, `src/ecgdelin/models.py` (the slide shows the exact lines):**
 
 ```python
 def normalize_layers(states: Tensor) -> Tensor:
@@ -551,12 +508,57 @@ class LayerBlend(nn.Module):
         return out
 ```
 
-**Notes:** Without the per-layer normalisation the deep layers would dominate whatever the weights said,
-because their vectors are ten times larger. The custom autograd function matters for memory: a batch of
-eight recordings' states is 1.9 GB in fp16, and a naive implementation would keep fp32 copies of it. The
-`normalized` flag is used by the trainer, which normalises each batch once for all heads.
+**Notes:** The counts are there to be checked: 20 blend logits, then 2560 × 128 weights and 128 biases,
+327,828 in all; every count on slides 17 to 19 is what `count_parameters` returns. The normalisation
+comes first because residual-stream magnitudes grow with depth (the largest absolute state is 1080):
+without it the deep layers would dominate the mix whatever the weights said, and the weights would no
+longer read as importance (decision 56). It has no learned affine, so it adds nothing to the counts.
+The trainer normalises each batch once and passes `normalized=True` to both state models; a test checks
+that the result is identical. The probe never sees a neighbouring block; whatever it knows about context
+comes from TimesFM's own attention inside the stored states.
 
-## 21. The rule-based baseline: `neurokit.py`, `emrich2024.py`, `run_neurokit.py`
+## 18. Main head: architecture and code
+
+**Visual:** D7: eight boxes, learned ones in blue. Stored states → `normalize_layers` (slide 17) →
+`LayerBlend`, 20 learned (slide 17), whose sum runs in `_Blend`, lines 32–47, a custom autograd
+function → linear 2560 → 128 and ReLU (327,808, line 92) → (12, 156, 128) → three Conv1d of width 3
+with ReLU, 128 → 128 along each lead's blocks (147,840, line 93; ±3 blocks, about ±190 ms) → linear
+128 → 128 (16,512, line 94) → `_to_scores` (slide 17) → (4, 12, 4992) → argmax, outside the model
+→ (12, 4992). Code: lines 32–47 (`_Blend`) and 85–103 (`ConvHead`); lines 48–84 are on slide 17.
+
+**Header band:** `ConvHead(n_layers=20, d_in=2560, width=128)`: 492,180 learned numbers. The probe's
+path plus three convolutions, so each block sees 3 neighbours on each side.
+
+**Notes:** `_Blend` exists for memory. A batch of eight recordings' states is 1.5 GB in fp16; a plain
+weighted sum in PyTorch would build a 3.1 GB fp32 copy and keep it for the backward pass. `_Blend` adds
+the layers into an fp32 output one at a time and saves only the fp16 input, from which the gradient of
+the 20 weights is computed; the states themselves need no gradient. The convolutions run along the
+block axis of one lead at a time, with the same weights for all 12 leads: lines 98 and 99 fold the leads
+into the batch before the convolutions and unfold them after. 20 + 327,808 + 3 × 49,280 + 16,512 =
+492,180.
+
+## 19. U-Net: architecture and code
+
+**Visual:** D8: the U drawn as boxes, learned ones in orange. Input 12 × 4992, each lead standardised
+→ encoder ConvBlocks 12 → 16, 16 → 32, 32 → 64, 64 → 128 at lengths 4992, 2496, 1248, 624, a
+max-pool (÷2) between them → bottleneck ConvBlock 128 → 256 at length 312 = 4992 ÷ 16 → decoder
+ConvBlocks 256 → 128, 128 → 64, 64 → 32, 32 → 16, each after a transposed convolution (×2) → 1 × 1
+conv 16 → 48 = 12 leads × 4 classes. Dashed skip arrows join each encoder level to the decoder level of
+the same length. Every box and every ×2 carries its learned count; the legend notes that `forward`
+checks the length and standardises each lead (lines 137 to 139). Code: lines 106 to 148
+(`_ConvBlock`, `UNet1D`).
+
+**Header band:** `UNet1D(n_leads=12, channels=(16, 32, 64, 128, 256), kernel=9)`: 1,859,104 learned
+numbers. It reads the filtered signal itself; TimesFM is not involved.
+
+**Notes:** A ConvBlock is Conv1d of width 9, BatchNorm and ReLU, twice. Each decoder block reads the
+upsampled path and the encoder's skip side by side, so the lowest one takes 128 + 128 = 256 channels.
+Four halvings need a length divisible by 16, and 4992 = 16 × 312; `forward` checks it and standardises
+each lead first. The 48 output channels are reshaped to (4 classes, 12 leads, 4992), so the U-Net shares
+the heads' loss, decoder and scorer. The counts add up: encoder 295,776, bottleneck 886,272, decoder
+blocks 588,960, transposed convolutions 87,280, output 816.
+
+## 20. The rule-based baseline: `neurokit.py`, `emrich2024.py`, `run_neurokit.py`
 
 **Visual:** a table: Emrich et al. 2024 single-lead row against our lead-I reproduction (means and
 within-recording SDs within 0.3 ms).
@@ -576,7 +578,7 @@ scorer is right: a scorer bug would have shown up as a disagreement with a publi
 R-peak variant the paper used was also run but missed many beats in NeuroKit2's port, so the baseline uses
 the library defaults, which is what a user gets.
 
-## 22. `train.py`: one loop for every model
+## 21. `train.py`: one loop for every model
 
 **Visual:** snippet S2; a timeline of one epoch showing one batch moved to the GPU and nine models stepping
 on it.
@@ -614,7 +616,7 @@ take 29 GB, so loading them once and training every model and seed over the same
 about an hour and a half. The three seeds differ in initialisation only; they share the batch order, which
 is what decision 31 pre-registered.
 
-## 23. The training recipe
+## 22. The training recipe
 
 **Visual:** `results/m3/fig_training.png`; the recipe as a table.
 
@@ -632,7 +634,7 @@ beats the U-Net" is "your U-Net is weak"; the answer is that it uses the same re
 within-recording errors and F1 sit in the range of published LUDB U-Nets. We did not help either model
 beyond this table.
 
-## 24. `train_fold.py` and `launch_m4.py`: one fold, one container
+## 23. `train_fold.py` and `launch_m4.py`: one fold, one container
 
 **Visual:** a container timeline: load 29 GB (35 s) → nine models train jointly (76 to 109 min) → stream 40
 test people (17 s) → write weights, predictions, JSON.
@@ -651,7 +653,7 @@ test people (17 s) → write weights, predictions, JSON.
 the client disconnects, so the first launch was stopped within minutes and the folds were relaunched on a
 deployed function from a client that exits immediately. Each run records the git tag it ran from.
 
-## 25. `decode.py`, `delineate.py`, `trained.py`: from class maps to points
+## 24. `decode.py`, `delineate.py`, `trained.py`: from class maps to points
 
 **Visual:** D4 part 1: class map → runs → clean (join < 10 ms gaps, drop P/QRS < 20 ms, T < 40 ms) → waves
 with peaks → beats → NeuroKit2 keys; snippet S3.
@@ -692,7 +694,7 @@ decoded more cleverly than another. Beats are grouped the way NeuroKit2 reports 
 can only report waves attached to a detected R peak; scoring all methods on the same kind of output is
 what makes the comparison fair. The orphan count stays visible so nothing is silently lost.
 
-## 26. `score.py`: matching and metrics
+## 25. `score.py`: matching and metrics
 
 **Visual:** D4 part 2: predicted points and marks on a time line, one-to-one matches within ±150 ms, a
 false positive and a false negative; snippet S4.
@@ -734,7 +736,7 @@ answers "how precisely". Pooled and within-recording SDs differ when a method so
 wave within 150 ms: NeuroKit2's P onset is 39 ms pooled but 16 ms within recordings. We report both; the
 primary metric uses the pooled one, which is the stricter.
 
-## 27. The primary metric and the stop rule
+## 26. The primary metric and the stop rule
 
 **Visual:** D4 part 3: 200 people → draw 200 with replacement, 10,000 times → per draw, the metric per
 seed, averaged → the difference head minus U-Net → the 95% interval; snippet S5.
@@ -779,7 +781,7 @@ averaged per fold: five fold numbers are few and correlated (Nadeau and Bengio 2
 F1 averaged over folds is biased (Forman and Scholz 2010). Why averaged over seeds inside a draw: the
 verdict is about the recipe's typical model, not one lucky seed.
 
-## 28. `crossval.py` and `final_report.py`: pooling the folds
+## 27. `crossval.py` and `final_report.py`: pooling the folds
 
 **Visual:** five test folds assembling into one 200-person prediction set per seed; the report's sections.
 
@@ -797,7 +799,7 @@ verdict is about the recipe's typical model, not one lucky seed.
 fold, would bias the pooled metric without any visible error. The report script is the only place where
 the five runs meet; it was written and rehearsed before the real runs, then frozen with the rest.
 
-## 29. Tests: two seams and synthetic hearts
+## 28. Tests: two seams and synthetic hearts
 
 **Visual:** the two seams drawn on the pipeline diagram; the list of test files.
 
@@ -821,7 +823,7 @@ refactored during M4 without fear: the shared normalisation, for example, had to
 behaviour bit for bit, and a test says it does. The synthetic ECG helper was ported from the sibling
 `ecgrepro` project.
 
-## 30. Rigor: pre-registered, frozen, logged
+## 29. Rigor: pre-registered, frozen, logged
 
 **Visual:** a timeline: plan and decisions (10-09) → M0 to M3 (10-10) → deep dive, M4 code, rehearsal,
 tag `step1-frozen`, final runs (10-11); the decision log's row count.
@@ -838,7 +840,7 @@ tag `step1-frozen`, final runs (10-11); the decision log's row count.
 1.9 ms margin means anything is if nothing could have been tuned towards it. The decision log is also the
 methods section of the paper, written as we went.
 
-## 31. The M3 deep dive, development only
+## 30. The M3 deep dive, development only
 
 **Visual:** `results/m3/fig_qrs_peak.png`; the sample table around one QRS mark (record 115, lead II: mark
 at sample 935 with 0.495 mV, maximum at 936 with 0.500 mV).
@@ -859,7 +861,7 @@ stopping. The point of the deep dive was to find bugs while fixing them was stil
 none that needed a change. The one-sample offset is a nice example of a dataset convention one would never
 see without pushing the cardiologists' own regions through the decoder.
 
-## 32. Results: the verdict
+## 31. Results: the verdict
 
 **Visual:** `results/m4/fig_folds.png`; the headline table.
 
@@ -878,7 +880,7 @@ seed. The U-Net itself beats NeuroKit2 by 16 ms, so most of the distance to the 
 "training on LUDB"; the TimesFM states add the last two milliseconds on top of that with a quarter of the
 parameters.
 
-## 33. Results: per point, against the CSE limits
+## 32. Results: per point, against the CSE limits
 
 **Visual:** `results/m4/fig_points.png`; `results/m3/fig_per_lead.png` as a secondary image (development
 people, per lead).
@@ -898,7 +900,7 @@ between-person bias; the within-recording SD is what the Emrich paper reports an
 to the CSE limits. Both are in the report; we chose the stricter one as the primary metric before the
 study, so the pass/fail against CSE is a secondary reading.
 
-## 34. Results: where the gain comes from
+## 33. Results: where the gain comes from
 
 **Visual:** `results/m3/fig_layer_weights.png`; a small comparison table with published numbers.
 
@@ -918,7 +920,7 @@ all trained models are within 2 ms of each other; where it is ambiguous, at the 
 view across 12 leads and 10 seconds wins. The per-layer probe ablation that would pin down which layers
 carry the information was deferred.
 
-## 35. What predictions look like
+## 34. What predictions look like
 
 **Visual:** `results/m3/fig_overlay_typical.png`, `fig_overlay_worst.png`, `fig_overlay_af.png`
 (development people).
@@ -934,7 +936,7 @@ carry the information was deferred.
 sinus record, and an AF record. The failure modes are honest ones: an unmarked but real P wave, a fragmented
 P in a lead where it is tiny, a wide fibrillation QRS.
 
-## 36. Limits and what was left out
+## 35. Limits and what was left out
 
 **Visual:** a plain list.
 
@@ -952,7 +954,7 @@ P in a lead where it is tiny, a wide fibrillation QRS.
 Everything in this list is a separate decision; nothing here was skipped silently, each has a decision-log
 entry.
 
-## 37. How it was built
+## 36. How it was built
 
 **Visual:** the milestone timeline with commit count and the tooling.
 
@@ -970,7 +972,7 @@ entry.
 tests turned refactors into non-events; the milestone reports caught the one thing that could have gone
 wrong, the launch mode, within minutes.
 
-## 38. Run it yourself
+## 37. Run it yourself
 
 **Visual:** the command list; where the outputs land.
 
@@ -987,7 +989,7 @@ wrong, the launch mode, within minutes.
 **Notes:** Everything a teammate needs is in the README. The states stay in the Volume, so a new head can
 be trained without re-extracting; the trained weights stay there too, under the licence.
 
-## 39. Close
+## 38. Close
 
 **Visual:** three lines.
 
