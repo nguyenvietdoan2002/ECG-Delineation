@@ -61,9 +61,14 @@ def _peak(kind: str, signal: NDArray[np.float64], start: int, end: int) -> int:
     return start + int(np.argmax(np.abs(deflection)))
 
 
+def waves_from_classes(classes: NDArray[np.int8], signal: NDArray[np.float64], fs: int) -> list[Wave]:
+    """One lead's cleaned regions as waves with their peaks, orphans included."""
+    return [Wave(kind, start, _peak(kind, signal, start, end), end) for kind, start, end in clean(runs(classes), fs)]
+
+
 def regions_to_points(classes: NDArray[np.int8], signal: NDArray[np.float64], fs: int) -> LeadPoints:
     """One lead: ``classes`` (indices into CLASSES) and the lead's signal, both of the same length."""
-    waves = [Wave(kind, start, _peak(kind, signal, start, end), end) for kind, start, end in clean(runs(classes), fs)]
+    waves = waves_from_classes(classes, signal, fs)
     beats, orphans = group_beats(waves)
     q_peaks = []
     s_peaks = []

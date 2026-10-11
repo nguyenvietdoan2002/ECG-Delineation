@@ -185,6 +185,46 @@ def _predicted_classes(lead: LeadPoints, n_samples: int) -> NDArray[np.int8]:
     return classes
 
 
+def _match_lead(
+    ref: Mapping[str, NDArray[np.int64]], got: Mapping[str, NDArray[np.int64]], tol: int, mask: NDArray[np.bool_], fs: int
+) -> tuple[dict[str, list[float]], dict[str, ToleranceStats]]:
+    """One lead at one tolerance: matched errors in ms and counts per point type."""
+    errors: dict[str, list[float]] = {}
+    counts: dict[str, ToleranceStats] = {}
+    for point in POINT_TYPES:
+        pairs = match(ref[point], got[point], tol)
+        matched_pred = {b for _, b in pairs}
+        # An unmatched prediction counts as a false positive only inside the marked span;
+        # a prediction just outside the span can still match a mark at the span's edge.
+        fp = sum(1 for b, s in enumerate(got[point]) if b not in matched_pred and mask[s])
+        counts[point] = ToleranceStats(len(pairs), ref[point].size - len(pairs), fp)
+        errors[point] = [(got[point][b] - ref[point][a]) * 1000 / fs for a, b in pairs]
+    return errors, counts
+
+
+@dataclass(frozen=True)
+class LeadScore:
+    """One lead's matched errors and counts at one tolerance."""
+
+    errors_ms: dict[str, NDArray[np.float64]]
+    counts: dict[str, ToleranceStats]
+
+
+def errors_by_lead(rec: Recording, pred: Mapping[str, LeadPoints], tol_ms: int = max(TOLERANCES_MS)) -> dict[str, LeadScore]:
+    """Per-lead errors and counts for one recording, with the same matching as ``score_recording``."""
+    n = rec.signal.shape[1]
+    tol = int(round(tol_ms * rec.fs / 1000))
+    empty = {p: np.array([], dtype=np.int64) for p in POINT_TYPES}
+    out = {}
+    for lead in LEADS:
+        labels = labels_for(rec.marks[lead], n)
+        ref = _reference_points(rec.marks[lead], labels.mask)
+        got = _predicted_points(pred[lead], n) if lead in pred else empty
+        errors, counts = _match_lead(ref, got, tol, labels.mask, rec.fs)
+        out[lead] = LeadScore({p: np.array(v, dtype=np.float64) for p, v in errors.items()}, counts)
+    return out
+
+
 def score_recording(rec: Recording, pred: Mapping[str, LeadPoints], tolerances_ms: Sequence[int] = TOLERANCES_MS) -> PersonScore:
     tols = {t: int(round(t * rec.fs / 1000)) for t in tolerances_ms}
     loosest = max(tolerances_ms)
@@ -199,21 +239,17 @@ def score_recording(rec: Recording, pred: Mapping[str, LeadPoints], tolerances_m
         mask = labels.mask
         ref = _reference_points(rec.marks[lead], mask)
         got = _predicted_points(pred[lead], n) if lead in pred else empty
-        for point in POINT_TYPES:
-            for t in tolerances_ms:
-                pairs = match(ref[point], got[point], tols[t])
-                matched_pred = {b for _, b in pairs}
+        for t in tolerances_ms:
+            lead_errors, lead_counts = _match_lead(ref, got, tols[t], mask, rec.fs)
+            for point in POINT_TYPES:
                 c = counts[t][point]
-                c[0] += len(pairs)
-                c[1] += ref[point].size - len(pairs)
-                # An unmatched prediction counts as a false positive only inside the marked span;
-                # a prediction just outside the span can still match a mark at the span's edge.
-                c[2] += sum(1 for b, s in enumerate(got[point]) if b not in matched_pred and mask[s])
+                c[0] += lead_counts[point].tp
+                c[1] += lead_counts[point].fn
+                c[2] += lead_counts[point].fp
                 if t == loosest:
-                    lead_errors = [(got[point][b] - ref[point][a]) * 1000 / rec.fs for a, b in pairs]
-                    errors[point] += lead_errors
-                    if len(lead_errors) >= 2:
-                        within[point].append(float(np.std(lead_errors)))
+                    errors[point] += lead_errors[point]
+                    if len(lead_errors[point]) >= 2:
+                        within[point].append(float(np.std(lead_errors[point])))
         if lead in pred:
             predicted = _predicted_classes(pred[lead], n)
             for kind in WAVE_CLASSES:

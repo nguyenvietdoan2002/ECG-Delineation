@@ -10,3 +10,5 @@ __pycache__/
 *.safetensors
 *.npy
 *.npz
+# Class maps of the development models are small raw predictions, committed so the M3 report is reproducible.
+!results/m3/*_classes.npz
