@@ -34,8 +34,9 @@ uv run modal run scripts/extract_states.py # M2: TimesFM 3 states for all 200 re
 uv run modal run scripts/m3_classes.py     # M3 deep dive, step 1: class maps of the fold-0 models on the validation people (CPU)
 uv run python scripts/m3_report.py         # M3 deep dive, step 2: docs/m3-report.md and results/m3/fig_*.png (local)
 uv run modal run scripts/train_fold.py::main --fold 0 --max-epochs 2    # M4 rehearsal: nine models, two epochs, fold 0 (run m4_fold0_smoke)
-uv run modal run --detach scripts/train_fold.py::main --folds 0,1,2,3,4 # M4: head, probe, U-Net x 3 seeds per fold, test-fold predictions
-uv run modal run scripts/train_fold.py::fetch --run m4_fold0            # copy a run's files from the Volume if the client had left
+uv run modal deploy scripts/train_fold.py                               # M4: deploy, then spawn the five folds from a short-lived client ...
+uv run python scripts/launch_m4.py results/m4/calls.json                # ... head, probe, U-Net x 3 seeds per fold, test-fold predictions
+uv run modal run scripts/train_fold.py::fetch --run m4_fold0            # copy a finished run's files from the Volume
 uv run python scripts/final_report.py                                   # pooled scores, stop-rule verdict, docs/report.md, results/m4/
 ```
 
