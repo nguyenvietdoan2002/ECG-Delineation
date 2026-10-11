@@ -142,7 +142,7 @@ def states_projection(states_path: Path, record: str = "115", layer: int = 5) ->
     return STATES_CACHE
 
 
-def states_figure(record: str = "115", lead: str = "ii") -> Path:
+def states_figure(record: str = "115", lead: str = "ii", with_scatter: bool = False) -> Path:
     from ecgdelin.labels import CLASSES
     from ecgdelin.preprocess import N_SAMPLES, prepare
 
@@ -168,8 +168,12 @@ def states_figure(record: str = "115", lead: str = "ii") -> Path:
     t = np.arange(N_SAMPLES) / rec.fs
     tb = np.arange(157) * 32 / rec.fs
 
-    fig = plt.figure(figsize=(16.96, 4.4), dpi=200)
-    gs = GridSpec(2, 2, width_ratios=[2.3, 1], height_ratios=[1, 1], wspace=0.10, hspace=0.42, left=0.04, right=0.99, top=0.90, bottom=0.10, figure=fig)
+    if with_scatter:
+        fig = plt.figure(figsize=(16.96, 4.4), dpi=200)
+        gs = GridSpec(2, 2, width_ratios=[2.3, 1], height_ratios=[1, 1], wspace=0.10, hspace=0.42, left=0.04, right=0.99, top=0.90, bottom=0.10, figure=fig)
+    else:  # slide 14: the time panels only; the chain that makes the line is drawn on the slide beside them
+        fig = plt.figure(figsize=(11.1, 4.4), dpi=200)
+        gs = GridSpec(2, 1, height_ratios=[1, 1], hspace=0.42, left=0.065, right=0.99, top=0.90, bottom=0.10, figure=fig)
     ax = fig.add_subplot(gs[0, 0])
     px = fig.add_subplot(gs[1, 0], sharex=ax)
     marked = [s for w in rec.marks[lead] for s in (w.onset, w.peak, w.offset) if s is not None]
@@ -196,18 +200,18 @@ def states_figure(record: str = "115", lead: str = "ii") -> Path:
     px.set_xticklabels(["0", "2", "4", "6", "8 s"])
     px.grid(axis="x", visible=False)
 
-    sx = fig.add_subplot(gs[:, 1])
-    order = ["none", "T", "P", "QRS"]
-    for name in order:
-        sel = majority == CLASSES.index(name)
-        sx.scatter(pcs[..., a][sel], pcs[..., b][sel], s=7, color=CLASS_COLORS[name], alpha=0.75 if name != "none" else 0.45, lw=0, label=name, zorder=2 if name != "none" else 1)
-    sx.set_xlabel(f"PC {a + 1}", fontsize=11)
-    sx.set_ylabel(f"PC {b + 1}", fontsize=11)
-    sx.tick_params(labelsize=11)
-    sx.set_title(f"The {int(ok.sum())} labelled blocks of the 12 leads, layer {layer}", loc="left", fontsize=13, color=INK)
-    handles = [plt.Line2D([], [], marker="o", ls="", color=CLASS_COLORS[n], markersize=6, label=n) for n in ("P", "QRS", "T", "none")]
-    sx.legend(handles=handles, loc="upper right", fontsize=11, frameon=False, handletextpad=0.2, borderaxespad=0.2)
-    path = OUT / "fig_states.png"
+    if with_scatter:
+        sx = fig.add_subplot(gs[:, 1])
+        for name in ("none", "T", "P", "QRS"):
+            sel = majority == CLASSES.index(name)
+            sx.scatter(pcs[..., a][sel], pcs[..., b][sel], s=7, color=CLASS_COLORS[name], alpha=0.75 if name != "none" else 0.45, lw=0, label=name, zorder=2 if name != "none" else 1)
+        sx.set_xlabel(f"PC {a + 1}", fontsize=11)
+        sx.set_ylabel(f"PC {b + 1}", fontsize=11)
+        sx.tick_params(labelsize=11)
+        sx.set_title(f"The {int(ok.sum())} labelled blocks of the 12 leads, layer {layer}", loc="left", fontsize=13, color=INK)
+        handles = [plt.Line2D([], [], marker="o", ls="", color=CLASS_COLORS[n], markersize=6, label=n) for n in ("P", "QRS", "T", "none")]
+        sx.legend(handles=handles, loc="upper right", fontsize=11, frameon=False, handletextpad=0.2, borderaxespad=0.2)
+    path = OUT / ("fig_states_scatter.png" if with_scatter else "fig_states.png")
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
     print(f"class R2 of PC1-5 over all blocks: {np.round(r2, 2)}; plotted PC {a + 1} (time) and PC {a + 1} vs PC {b + 1}; explained {np.round(data['explained'], 3)}")
