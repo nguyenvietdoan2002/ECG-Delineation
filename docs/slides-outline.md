@@ -306,23 +306,68 @@ of each other, so a beat-level split leaks. The test fold of a container is neve
 ends; the trainer loads only train and validation people into memory and streams the test people
 afterwards. Development, every choice made while building, used fold 0's validation people only.
 
-## 13. `preprocess.py`: the only preprocessing
+## 13. `preprocess.py`: the preprocessing pipeline
 
-**Visual:** before/after waveform of the high-pass on a drifting baseline; the 4992-sample crop.
+Redrawn on 2026-10-11 as a highlighted main function plus a pipeline with a reference per step. The order
+follows the code: `prepare` filters the full 5000 samples first and crops to 4992 afterwards (the earlier
+slide said the opposite).
 
-**Bullets:**
-- `prepare(signal, fs)`: first 4992 samples (156 × 32), then a 0.5 Hz zero-phase Butterworth high-pass of
-  order 5, nothing else; output float32 (12, 4992) in mV
-- Mirrored padding of 6 s before filtering: scipy's default pad is far shorter than a 0.5 Hz filter's memory
-  (end transient 0.5% at 1 s from the ends instead of 1.9%)
-- Identical for the TimesFM heads and the U-Net; NeuroKit2 gets the raw 5000 samples and does its own
-  cleaning, as a user would
-- No resampling (LUDB is 500 Hz), no augmentation
+**Main function (highlighted band):** `prepare(signal, fs) → float32 (12, 4992)`: removes baseline drift from
+all 12 leads with a 0.5 Hz zero-phase high-pass over the full 10 s, then keeps the first 4992 samples. Both
+trained models get exactly this input.
 
-**Notes:** The trained models see exactly the same input, so a difference between them is a difference
-between the models. The U-Net additionally standardises each lead to zero mean and unit variance inside its
-forward pass, because TimesFM normalises internally and the control should not depend on gain differences
-between leads.
+**Pipeline, shared steps** (steps 2 to 5 on a band labelled `preprocess.py · prepare(signal, fs)`):
+
+1. Read in millivolts (`dataset.py`): WFDB record → 12 × 5000 samples at 500 Hz, leads selected by name.
+   PhysioNet: Goldberger et al. 2000; LUDB: Kalyakulina et al. 2020.
+2. Mirror padding: 6 s at each end, reflected (`padtype="even"`, `padlen=3000`), so the filter starts and
+   ends on real-looking signal. SciPy, Virtanen et al. 2020; decision 51.
+3. Butterworth high-pass: 0.5 Hz, order 5, second-order sections; removes baseline wander. Butterworth 1930;
+   cutoff and order as NeuroKit2's default cleaning, Makowski et al. 2021.
+4. Forward, then backward (`sosfiltfilt`): zero phase, so wave edges do not move. Kormylo & Jain 1974; a
+   low-frequency cutoff up to 0.67 Hz is acceptable for zero-phase digital filters, Kligfield et al. 2007.
+5. Unpad, then crop: drop the padding, keep samples 0 to 4991 (156 blocks of 32), float32. Block length
+   from TimesFM, Das et al. 2024; decision 24.
+
+**Branches:** the shared output feeds both trained models ("the same input for both trained models").
+
+- NeuroKit2 only (from step 1, raw 5000 samples): its own `ecg_clean`, a 0.5 Hz Butterworth high-pass of
+  order 5, then a 50 Hz powerline filter (a moving average over one 50 Hz period). Makowski et al. 2021.
+- U-Net only: each lead scaled to mean 0, SD 1 over its 4992 samples, inside the network; the operation of
+  instance normalisation, Ulyanov et al. 2016; decision 55.
+- TimesFM: cut into 12 × 156 blocks of 32 (patching: Nie et al. 2023; Das et al. 2024), then each block
+  scaled by its lead's running mean and SD over blocks 1 to k, plus mask flags, 192 numbers (RevIN, Kim et
+  al. 2022, applied causally), → TimesFM 3 states (slides 7 and 8).
+
+**Footer:** tests/test_preprocess.py: drift is removed, a 10 Hz wave passes unchanged and undelayed,
+filtering comes before the crop · no resampling, no augmentation · decisions 24, 51, 55.
+
+**References:**
+- Butterworth S. On the theory of filter amplifiers. Experimental Wireless and the Wireless Engineer
+  7:536–541, 1930.
+- Kormylo JJ, Jain VK. Two-pass recursive digital filter with zero phase shift. IEEE Transactions on
+  Acoustics, Speech, and Signal Processing 22(5):384–387, 1974. DOI 10.1109/TASSP.1974.1162602.
+- Kligfield P et al. Recommendations for the standardization and interpretation of the electrocardiogram,
+  part I. Circulation 115:1306–1324, 2007.
+- Goldberger AL et al. PhysioBank, PhysioToolkit, and PhysioNet. Circulation 101(23):e215–e220, 2000.
+- Kalyakulina AI et al. LUDB: a new open-access validation tool for electrocardiogram delineation
+  algorithms. IEEE Access 8:186181–186190, 2020.
+- Virtanen P et al. SciPy 1.0. Nature Methods 17:261–272, 2020.
+- Makowski D et al. NeuroKit2: a Python toolbox for neurophysiological signal processing. Behavior Research
+  Methods 53:1689–1696, 2021.
+- Ulyanov D, Vedaldi A, Lempitsky V. Instance normalization: the missing ingredient for fast stylization.
+  arXiv:1607.08022, 2016.
+- Kim T et al. Reversible instance normalization for accurate time-series forecasting against distribution
+  shift. ICLR 2022.
+- Nie Y et al. A time series is worth 64 words: long-term forecasting with transformers. ICLR 2023.
+- Das A et al. A decoder-only foundation model for time-series forecasting. ICML 2024.
+
+**Notes:** Walk the top row: the record is read in millivolts, mirrored at both ends, high-passed at 0.5 Hz,
+filtered a second time backwards so nothing shifts in time, then cropped to 156 blocks. The 0.5 Hz cutoff is
+what NeuroKit2 uses, and the AHA recommendations allow up to 0.67 Hz for zero-phase digital filters, so
+the ST segment and wave edges are not distorted. Then the branches: NeuroKit2 never sees our pipeline, it
+cleans the raw signal itself; the U-Net only adds a per-lead scaling; TimesFM cuts and normalises inside its
+own code. The two trained models therefore see exactly the same signal.
 
 ## 14. `states.py` and `extract_states.py`: the state extractor
 
