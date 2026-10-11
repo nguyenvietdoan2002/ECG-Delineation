@@ -132,25 +132,52 @@ prediction bars can stay as a preview).
 then derive the points from the painted regions. Lead V1 in the lower panel shows why multi-lead matters:
 the P wave is tiny there, yet the marks are the same points in time.
 
-## 7. TimesFM 3
+## 7. TimesFM 3: from a 64 ms block to a 1280-number state
 
-**Visual:** block diagram: 32-sample patches → residual MLP → 20 transformer layers (attention over time,
-causal; attention across variates; MLP) → forecast head (unused, greyed out).
+Figure-only slide, revised on 2026-10-11. The architecture follows the TimesFM 3 code
+(`timesfm3/torch/model.py` `_preprocess`, `dense.ResidualBlock`, `transformer.MixingTransformer`) and the
+checkpoint's `config.json`, drawn in the left-to-right arrangement of Das et al. (ICML 2024) and the Google
+Research post of February 2024; our own drawing, credited in the footer.
 
-**Bullets:**
-- Google's TimesFM 3 (`google/timesfm-3.0-pytorch`): a decoder-only transformer trained to forecast any time
-  series; 1280 dimensions, 16 heads, 20 layers, patches of 32 samples (64 ms at 500 Hz)
-- Each layer does three things: attention across the patches of one series (causal: a patch sees only its
-  past), attention across the series fed together (our 12 leads), a feed-forward block
-- A "state" is the 1280-number vector a layer outputs for one patch: TimesFM's reading of that 64 ms of
-  one lead, in the context of the other leads and the past
-- It only forecasts; it has no notion of a wave and no training code for labelling; we never fine-tune it
-- Licence: TimesFM Non-Commercial, so trained heads are not distributed and results are research-only
+**Visual:** five numbered stages, left to right, each with its tensor shape (leads, blocks, numbers per
+block; batch omitted):
 
-**Notes:** The important property is causality. The model was built to predict the future, so block k
-knows nothing about what comes after it. A wave's offset is defined by what comes after it. That is the
-obstacle the next slide removes. We use the model's plain forward pass with hooks on the 20 layers; the
-forecasting loop ("decode") is never called.
+1. Cut into blocks, `(12, 156, 32)`: a 12-lead strip of about 1 s cut into 32-sample tiles (64 ms), one
+   block of lead II highlighted.
+2. Block input, `(12, 156, 192)`: a bar of four segments, drawn to scale: 32 values normalised by the
+   lead's running mean and SD over blocks 1 to k; a 64-sample future slot, all 0 and masked, because every
+   lead is a target; 32 mask flags at 0; 64 mask flags at 1.
+3. Embed, `(12, 156, 1280)`: the residual block, Linear 192 → 1280, ReLU, Linear 1280 → 1280, plus a
+   linear skip 192 → 1280.
+4. One layer, repeated 20 times, `20 × (12, 156, 1280)`: three sub-blocks in sequence, each RMSNorm, the
+   operation, RMSNorm, then its input added back. Time attention (blue): each lead over its 156 blocks,
+   causal, 16 heads × 80, rotary positions. Lead attention (aqua): the 12 leads at the same block, not
+   causal, no positions. Feed-forward (orange): 1280 → 1280 → 1280, ReLU.
+5. Forecast head, `(12, 156, 576)`: 1280 → 64 samples × 9 quantiles, greyed and dashed, "never used".
+
+Below stage 4, an accent arrow, "forward hooks read the output of every one of the 20 layers", into the
+states box: the 1280-vector after each layer for each block of each lead, 20 × 12 × 156 × 1280 per pass,
+forward and reversed joined to 2560 on the next slide.
+
+**Caption:** Every 64 ms block of every lead becomes one 1280-number vector, refined 20 times; a state is
+that vector read after a layer.
+
+**Spec strip:** 1 block = 32 samples = 64 ms at 500 Hz · width 1280, 16 heads × 80 · RMSNorm before and
+after every sub-block, residual adds · rotary positions on time, none across leads · feed-forward and
+residual block: ReLU, no bias · forecast: 64 samples × quantiles 0.1 to 0.9.
+
+**Footer:** After Das et al., ICML 2024, and Google Research, February 2024; drawn from the TimesFM 3 code
+and checkpoint config · TimesFM licence: non-commercial, research only.
+
+**Notes:** Walk the figure left to right with one block of lead II. Its 32 samples are normalised by
+everything lead II has shown so far, then paired with a 64-sample slot. TimesFM forecasts 64 samples per
+block, and the slot is how it accepts series whose future is known in advance, such as a calendar signal.
+For a series it must forecast, the slot is blanked and flagged as masked; we mark every lead as a target,
+so no future ever enters. Values and flags together are 192 numbers, and the residual block turns them into
+a 1280-number token. Each of the 20 layers then lets the token look back along its own lead (causal: only
+blocks 1 to k), across the other 11 leads at the same moment, and through a feed-forward block, each step
+added on top of what was there. We read the token after every layer; that is a state. The forecast head on
+the right is what TimesFM was trained for, and we never use it.
 
 ## 8. Reading bidirectional states out of a causal model
 
@@ -158,18 +185,21 @@ forecasting loop ("decode") is never called.
 flipped back) → concatenated per block → the stored array 20 layers × 12 leads × 156 blocks × 2560.
 
 **Bullets:**
-- Crop to 4992 samples = 156 blocks of 32, so the two passes align block by block; no mark lies in the
-  dropped 16 ms
-- Forward pass: states for blocks 1..156 with left context; reversed pass: feed the signal backwards, flip
-  the states back, so every block also has right context (the idea of bidirectional RNNs and ELMo)
-- Concatenate: 1280 + 1280 = 2560 numbers per block per lead per layer; all 20 layers kept
-- Verified by a GPU test: changing late samples leaves forward states of earlier blocks unchanged and
-  changes the joined states
-- Computed once for all 200 records, stored in fp16 (max magnitude 1080, round-trip error 2 × 10⁻⁴): 183 MB
-  per record, 36.6 GB in the Modal Volume
+- Why two passes: attention over time is causal, so a block's forward state knows nothing of what follows
+  it, and a wave's offset is defined by what follows it
+- TimesFM only forecasts and is never fine-tuned; its forecasting loop is never called. Forward hooks read
+  the 20 layers, and every lead is a target, so its 64-sample future slot stays masked
+- Reversing is the idea of bidirectional RNNs and ELMo; all 20 layers are kept so a head can learn which
+  ones matter
+- Verified on a T4: changing late samples leaves earlier forward states unchanged and changes the joined
+  states
+- Crop to 4992 samples so the passes align block by block (no mark in the dropped 16 ms); computed once for
+  200 records, 36.6 GB in fp16 (largest magnitude 1080, round-trip error 2 × 10⁻⁴), so training never runs
+  the backbone again
 
-**Notes:** Storing the states is what makes training cheap: the heads train for hundreds of epochs without
-running the 1.3 GB backbone again. Each of the 20 layers is kept so the head can learn which layers matter
+**Notes:** The first two bullets moved here from slide 7 when it became a figure. Storing the states is
+what makes training cheap: the heads train for hundreds of epochs without running the 1.3 GB backbone
+again. Each of the 20 layers is kept so the head can learn which layers matter
 through a weighted blend, which you will see in the models section. The file naming includes the checkpoint
 hash, so a changed checkpoint invalidates the cache.
 
