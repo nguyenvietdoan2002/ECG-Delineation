@@ -8,6 +8,10 @@ padded two-way filtering below reproduces `preprocess.highpass` exactly (checked
 
 Writes results/deck/fig_decoder_steps.png: one real beat through the decoder for slide 24 (the linear
 probe's class map on record 22, lead III, from the M3 run), its clean-up and the decoded points.
+
+Writes results/deck/fig_verdict_draws.png: the 10,000 bootstrap differences behind the stop-rule verdict for
+slide 26, rebuilt from results/predictions as scripts/final_report.py builds them and cached in
+results/deck/verdict_draws_head_vs_unet.npz.
 """
 
 from pathlib import Path
@@ -349,11 +353,96 @@ def decoder_steps(record: str = "22", lead: str = "iii", model: str = "probe", s
     return path
 
 
+VERDICT_DRAWS = OUT / "verdict_draws_head_vs_unet.npz"
+
+
+def verdict_draws(n_draws: int = 10_000, seed: int = 0) -> Path:
+    """The 10,000 bootstrap differences behind the stop-rule verdict (head minus U-Net), rebuilt exactly as
+    scripts/final_report.py builds them through `score.compare_seeds`, and checked against
+    results/m4/summary.json. Cached in results/deck/verdict_draws_head_vs_unet.npz."""
+    import json
+
+    from ecgdelin.crossval import assemble
+    from ecgdelin.delineate import LeadPoints
+    from ecgdelin.score import TOLERANCES_MS, _ci95, _draw_counts, _f1_per_draw, _per_seed, _primary_per_draw
+    from ecgdelin.splits import Folds
+
+    summary = json.loads((REPO / "results" / "m4" / "summary.json").read_text(encoding="utf-8"))
+    folds = Folds.from_json((REPO / "splits" / "ludb_5fold_seed0.json").read_text(encoding="utf-8"))
+    fold_list = list(range(len(folds.folds)))
+    people = [rec_id for k in fold_list for rec_id in folds.folds[k].test]
+    ordered = [load_record(ludb_root(), rec_id) for rec_id in people]
+
+    def predictions(name: str) -> list[dict[str, dict[str, LeadPoints]]]:
+        by_fold: dict[int, dict[int, dict[str, dict[str, LeadPoints]]]] = {}
+        for k in fold_list:
+            path = REPO / "results" / "predictions" / f"m4_fold{k}_{name}.json"
+            for entry in json.loads(path.read_text(encoding="utf-8")):
+                by_fold.setdefault(k, {}).setdefault(int(entry["seed"]), {})[entry["id"]] = {lead: LeadPoints.from_dict(d) for lead, d in entry["leads"].items()}
+        seeds = sorted(by_fold[0])
+        return [assemble(folds, {k: by_fold[k][s] for k in fold_list}) for s in seeds]
+
+    scores = {name: _per_seed(ordered, predictions(name), TOLERANCES_MS) for name in ("head", "unet")}
+    counts = _draw_counts(len(ordered), n_draws, seed)
+    primary = {name: np.mean([_primary_per_draw(s, counts) for s in scores[name]], axis=0) for name in scores}
+    f1 = {name: np.mean([_f1_per_draw(s, counts, max(TOLERANCES_MS)) for s in scores[name]], axis=0) for name in scores}
+    sd_diff, f1_diff = primary["head"] - primary["unet"], f1["head"] - f1["unet"]
+    verdict = summary["verdicts"]["head_vs_unet"]
+    assert np.allclose(_ci95(sd_diff), verdict["diff_ci95"]) and np.allclose(_ci95(f1_diff), verdict["f1_diff_ci95"]), "the rebuilt draws do not reproduce summary.json"
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(VERDICT_DRAWS, sd_diff_ms=sd_diff, f1_diff=f1_diff)
+    return VERDICT_DRAWS
+
+
+def verdict_figure() -> Path:
+    """Slide 26: the two bootstrap distributions behind the verdict, with their 95% intervals and zero."""
+    from ecgdelin.score import _ci95
+
+    draws = np.load(VERDICT_DRAWS)
+    panels = (
+        (draws["sd_diff_ms"], "Primary SD, head minus U-Net (ms)", "head better", "U-Net better", "{:.2f}", (-2.75, 0.75)),
+        (100 * draws["f1_diff"], "F1 at ±150 ms, head minus U-Net (percentage points)", "head worse", "head better", "{:+.2f}", (-0.55, 1.55)),
+    )
+    fig = plt.figure(figsize=(1696 / 150, 330 / 150), dpi=150)
+    for i, (values, title, left_word, right_word, number, xlim) in enumerate(panels):
+        ax = fig.add_axes((0.012 + i * 0.5, 0.27, 0.47, 0.53))
+        lo, hi = _ci95(values)
+        bins = np.linspace(values.min(), values.max(), 61)
+        heights, edges = np.histogram(values, bins=bins)
+        centres = (edges[:-1] + edges[1:]) / 2
+        inside = (centres >= lo) & (centres <= hi)
+        width = (edges[1] - edges[0]) * 0.9
+        ax.bar(centres[~inside], heights[~inside], width=width, color="#d4d2cb", linewidth=0)
+        ax.bar(centres[inside], heights[inside], width=width, color=INK2, linewidth=0)
+        top = heights.max()
+        ax.plot([0.0, 0.0], [0, top * 1.04], color=INK, linewidth=1.4, linestyle=(0, (4, 3)))
+        ax.plot([lo, lo, hi, hi], [top * 1.1, top * 1.18, top * 1.18, top * 1.1], color=INK, linewidth=1.2)
+        label = f"95% interval {number.format(lo)} to {number.format(hi)}".replace("-", "−")
+        ax.text((lo + hi) / 2, top * 1.22, label, ha="center", va="bottom", fontsize=10, fontweight="bold", color=INK)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(0, top * 1.5)
+        ax.set_yticks([])
+        ax.grid(False)
+        for side in ("left", "top", "right"):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(axis="x", labelsize=9.5, length=0, pad=3)
+        ax.text(0.0, 1.04, title, transform=ax.transAxes, ha="left", va="bottom", fontsize=10.5, fontweight="bold", color=INK)
+        ax.annotate(f"← {left_word}", xy=(0, 0), xytext=(-6, -22), textcoords="offset points", xycoords=("data", "axes fraction"), ha="right", va="top", fontsize=9.5, color=INK2)
+        ax.annotate(f"{right_word} →", xy=(0, 0), xytext=(6, -22), textcoords="offset points", xycoords=("data", "axes fraction"), ha="left", va="top", fontsize=9.5, color=INK2)
+    path = OUT / "fig_verdict_draws.png"
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
 if __name__ == "__main__":
     import sys
 
     print("wrote", preprocess_steps())
     print("wrote", decoder_steps())
+    if not VERDICT_DRAWS.exists():
+        print("wrote", verdict_draws())
+    print("wrote", verdict_figure())
     if "--states" in sys.argv:  # path to a downloaded /vol/states/<revision>/115.npy
         print("wrote", states_projection(Path(sys.argv[sys.argv.index("--states") + 1])))
     if STATES_CACHE.exists():

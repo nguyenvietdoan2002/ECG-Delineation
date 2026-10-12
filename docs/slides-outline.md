@@ -797,17 +797,20 @@ other; a group without P waves is summarised over the points it has.
 
 ## 26. The primary metric and the stop rule
 
-**Visual:** D4 part 3: 200 people → draw 200 with replacement, 10,000 times → per draw, the metric per
-seed, averaged → the difference head minus U-Net → the 95% interval; snippet S5.
+Redrawn on 2026-10-12 as a four-step pipeline with little text, ending in the real bootstrap
+distributions behind the verdict.
 
-**Bullets:**
-- Primary metric: mean over the five CSE points of the pooled error SD; lower is better
-- Confidence intervals: paired bootstrap over people (never over beats), 10,000 draws
-- Stop rule, fixed in advance: TimesFM helps only if the 95% interval of head minus U-Net lies entirely
-  below zero, and the interval of the F1 difference at ±150 ms does not lie entirely below zero
-- Seeds: in every draw the metric is computed per seed and averaged over the three seeds (decision 64);
-  per-fold differences are reported for information only
-- `compare_seeds`, `seed_averaged_primary`, `_draw_counts`, `_primary_per_draw`
+**Visual:** three steps in a row, then the result. 1, one number per method: the head's pooled error SDs
+at the five CSE points (P on 16.2, P off 14.2, QRS on 8.7, QRS off 10.5, T off 20.9 ms) as bars with their
+mean, 14.1 ms; the U-Net's mean is 16.0 ms; lower is better. 2, resample the people 10,000 times: eight
+numbered people and one draw with repeats and gaps; a person's beats stay together. 3, same draw, both
+methods: head (mean of 3 seeds) minus U-Net (mean of 3 seeds) gives one paired difference per draw. 4,
+`results/deck/fig_verdict_draws.png` (from `scripts/deck_figures.py`, `verdict_draws` and
+`verdict_figure`): histograms of the 10,000 differences, rebuilt from `results/predictions` with the
+scorer's own functions and checked against `results/m4/summary.json`; primary SD −2.28 to −1.53 ms with
+every draw below zero, F1 at ±150 ms −0.09 to +0.86 percentage points with about 6% of draws below zero.
+A strip states the stop rule, fixed in advance: SD interval entirely below 0, so the head is better; F1
+interval not entirely below 0, so F1 is no worse; rule met.
 
 **Snippet S5, `src/ecgdelin/score.py`:**
 
