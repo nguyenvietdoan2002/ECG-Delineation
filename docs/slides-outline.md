@@ -739,19 +739,35 @@ because NeuroKit2 can only report waves attached to a detected R peak; scoring a
 kind of output is what makes the comparison fair. The orphan count stays visible so nothing is silently
 lost.
 
-## 25. `score.py`: matching and metrics
+## 25. `score.py`: from matched points to numbers
 
-**Visual:** D4 part 2: predicted points and marks on a time line, one-to-one matches within ±150 ms, a
-false positive and a false negative; snippet S4.
+Redrawn on 2026-10-12 as three pictures and three highlight cards; the bootstrap and the stop rule stay on
+slide 26.
 
-**Bullets:**
-- Per lead and point type, predictions are matched one-to-one to marks within ±150 ms, nearest pair first,
-  inside the marked span (the AAMI EC57 / `bxb` convention); a second run at ±40 ms gives the strict figures
-- Error = prediction − mark in ms; reported per point: mean, pooled SD (population SD over all matched
-  pairs), within-recording SD (per lead and recording, then averaged, Emrich's convention), Se, PPV, F1 at
-  both tolerances, region mIoU; all broken down by rhythm
-- An unmatched prediction counts as a false positive only inside the marked span
-- `score_recording` keeps one `PersonScore` per person so bootstraps can resample people
+**Visual:** 1, a schematic of `match` on one lead and point type (times in ms): marks at 300, 700, 1150
+and 1550 inside the lead's marked span (150 to 1750), ±150 ms shaded around each mark, predictions at
+316, 680, 790, 1330 and 1880. Outcomes: 316 and 680 are true positives with errors +16 and −20 ms (680
+wins over 790 because the nearest pair is matched first); 790 is a false positive because its mark is
+taken; 1330 is a false positive and the mark at 1150 a false negative, 180 ms apart; the mark at 1550 is a
+false negative; 1880 lies outside the marked span and is ignored. So TP 2, FP 2, FN 2, Se, PPV and F1 all
+0.50; the scorer's own `_match_lead` reproduces these numbers. 2, the functions in the order they run:
+`score_recording` (one person, every lead and point type at ±150 and ±40 ms, a `PersonScore`), then
+`summarize` (all people pooled: mean, both SDs, Se, PPV, F1, region IoU, the primary SD and its 95%
+interval, a `Report`), `score` (both steps for one method, overall and per rhythm group) and
+`compare_seeds` (two methods on the same bootstrap draws, a `Verdict`, slide 26); helpers listed in one
+line. 3, bars for P onset over all 200 people in the final runs: NeuroKit2 39.2 ms pooled and 15.9 ms
+within recordings, the TimesFM head 16.2 and 9.4 ms.
+
+**Highlight cards:**
+- `match`, one-to-one and nearest first: per lead and point type, each mark pairs with at most one
+  prediction within ±150 ms; a leftover prediction inside the marked span is a false positive, a leftover
+  mark a false negative
+- `summarize`, pooled and within: pooled SD takes every matched pair of every person, within-recording SD
+  is taken per lead and person, then averaged; the pooled one also counts offsets that differ between
+  people and the odd wrong-wave match, so it is larger
+- What it reports, found it and how precisely: F1 at ±150 ms asks whether a wave was found, the SD how
+  precisely; a second pass at ±40 ms gives the strict figures; the primary SD averages the pooled SD of
+  the five CSE points
 
 **Snippet S4, `src/ecgdelin/score.py`:**
 
@@ -776,10 +792,11 @@ def match(ref: NDArray[np.int64], pred: NDArray[np.int64], tol: int) -> list[tup
     return pairs
 ```
 
-**Notes:** F1 at ±150 ms answers "did you find the wave at all" and is saturated for good methods; the SD
-answers "how precisely". Pooled and within-recording SDs differ when a method sometimes matches the wrong
-wave within 150 ms: NeuroKit2's P onset is 39 ms pooled but 16 ms within recordings. We report both; the
-primary metric uses the pooled one, which is the stricter.
+**Notes:** Matching follows the AAMI EC57 / `bxb` convention. Errors are prediction minus mark, and the
+SDs are population SDs, which makes the pooled SD decomposable into per-person sums for the bootstrap
+(slide 26). Region IoU rebuilds each method's P, QRS and T regions from its onset and offset points, so
+NeuroKit2 is measured the same way as the trained models. Rhythm groups are sinus, AF or flutter, and
+other; a group without P waves is summarised over the points it has.
 
 ## 26. The primary metric and the stop rule
 
