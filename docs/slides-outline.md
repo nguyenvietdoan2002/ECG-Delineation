@@ -685,20 +685,29 @@ scored its validation people only. The commands, in order: `modal deploy scripts
 scripts/launch_m4.py results/m4/calls.json`, optionally `--poll`, then
 `modal run scripts/train_fold.py::fetch --run m4_fold<k>` for each fold.
 
-## 24. `decode.py`, `delineate.py`, `trained.py`: from class maps to points
+## 24. `decode.py`, `delineate.py`, `trained.py`: class map to points
 
-**Visual:** D4 part 1: class map → runs → clean (join < 10 ms gaps, drop P/QRS < 20 ms, T < 40 ms) → waves
-with peaks → beats → NeuroKit2 keys; snippet S3.
+Redrawn on 2026-10-12 around one real beat, a schematic of the beat grouping and three highlight cards.
 
-**Bullets:**
-- Onset and offset = first and last sample of a cleaned run
-- P and T peak = largest absolute deflection from the run's baseline (mean of its two boundary samples);
-  QRS peak = highest positive deflection if above 0.02 mV, else the lowest point, because LUDB marks the R
-  wave even under a deep S (decision 47)
-- Q and S = lowest points before and after the R peak inside the QRS (reported, not scored)
-- `group_beats`: each QRS takes the nearest P before it and the nearest T after it; P or T without a QRS
-  neighbour are orphans, dropped and counted
-- `trained.py`: `HeadDelineator` and `UNetDelineator` put the models behind the delineator interface
+**Visual:** `results/deck/fig_decoder_steps.png` (from `scripts/deck_figures.py`, `decoder_steps`): the
+linear probe's class map for record 22, lead III, a fold-0 development person from the M3 run, samples
+1440 to 1760. Row 1, the model output with one class per sample: the P wave in four pieces, two short P
+blips, one-sample gaps in the QRS and the T. Row 2, after the clean-up: the pieces joined, the blips
+dropped. Row 3, the decoded onsets, offsets and peaks on the filtered lead with the cardiologists' marks
+below; every decoded point lies within 12 ms of its mark. Below the figure, a schematic of the beat
+grouping (peaks in samples): P 900, QRS 1000, T 1150, T 1250, P 1300, QRS 1400 give beat 1 with P, QRS
+and T, an orphan T at 1250, and beat 2 without a T; a three-row table shows ECG_P_Peaks, ECG_R_Peaks and
+ECG_T_Peaks with one value per beat and NaN for the missing T.
+
+**Highlight cards:**
+- `delineate.py`, one format for every method: NeuroKit2's eleven keys per lead, one value per beat, NaN
+  where a wave is missing; NeuroKit2, both heads and the U-Net all answer this way, so one scorer grades
+  them all
+- `decode.py`, the same decoder for all: thresholds fixed before any model was trained; peaks from the
+  signal, the largest swing for P and T, the R wave for QRS when it rises 0.02 mV, as LUDB marks it
+- `trained.py`, models answer like NeuroKit2: the highest-scoring class per sample, then the decoder on
+  the filtered signal the model saw; the wrappers serve new recordings, the fold script decodes the stored
+  states directly
 
 **Snippet S3, `src/ecgdelin/delineate.py`:**
 
@@ -722,9 +731,13 @@ def group_beats(waves: Sequence[Wave]) -> tuple[list[Beat], int]:
 ```
 
 **Notes:** The decoder is shared by every trained model, with thresholds fixed in advance, so no model is
-decoded more cleverly than another. Beats are grouped the way NeuroKit2 reports them because NeuroKit2
-can only report waves attached to a detected R peak; scoring all methods on the same kind of output is
-what makes the comparison fair. The orphan count stays visible so nothing is silently lost.
+decoded more cleverly than another. The example uses the linear probe because it leaves the most
+fragments; the head and the U-Net go through exactly the same steps. Joining happens before dropping and
+only between neighbouring regions of the same kind, so a blip of another class between two pieces keeps
+them apart and the extra piece becomes an orphan. Beats are grouped the way NeuroKit2 reports them
+because NeuroKit2 can only report waves attached to a detected R peak; scoring all methods on the same
+kind of output is what makes the comparison fair. The orphan count stays visible so nothing is silently
+lost.
 
 ## 25. `score.py`: matching and metrics
 

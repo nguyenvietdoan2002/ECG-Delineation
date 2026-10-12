@@ -5,6 +5,9 @@
 Writes results/deck/fig_preprocess_steps.png: steps 2 to 5 of `preprocess.prepare` on a real lead with
 visible baseline wander (record 91, lead II), and the same beat filtered one way against both ways. The
 padded two-way filtering below reproduces `preprocess.highpass` exactly (checked at run time).
+
+Writes results/deck/fig_decoder_steps.png: one real beat through the decoder for slide 24 (the linear
+probe's class map on record 22, lead III, from the M3 run), its clean-up and the decoded points.
 """
 
 from pathlib import Path
@@ -218,10 +221,139 @@ def states_figure(record: str = "115", lead: str = "ii", with_scatter: bool = Fa
     return path
 
 
+def decoder_steps(record: str = "22", lead: str = "iii", model: str = "probe", start: int = 1440, stop: int = 1760) -> Path:
+    """Slide 24: one real beat through the decoder. The class map is the linear probe's on a fold-0
+    validation person from the M3 run (results/m3/m3_fold0_seed0_classes.npz). Row 1: the raw runs of
+    each class; row 2: the runs after `decode.clean`; row 3: the decoded onsets, peaks and offsets on
+    the filtered lead, with the cardiologists' marks below."""
+    from matplotlib.axes import Axes
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Rectangle
+
+    from ecgdelin.decode import JOIN_GAP_MS, MIN_MS, clean, runs, waves_from_classes
+    from ecgdelin.preprocess import prepare
+    from ecgdelin.reporting import WAVE
+
+    maps = np.load(REPO / "results" / "m3" / "m3_fold0_seed0_classes.npz")
+    k = LEADS.index(lead)
+    rec = load_record(ludb_root(), record)
+    fs = rec.fs
+    signal = prepare(rec.signal, fs)[k].astype(np.float64)
+    classes = maps[model][list(maps["ids"]).index(record), k]
+
+    def inside(s: int, e: int) -> bool:
+        return e >= start and s < stop
+
+    # The clean-up step by step, mirroring decode.clean, to know what was joined and what was dropped.
+    gap = int(round(JOIN_GAP_MS * fs / 1000))
+    shortest = {kind: int(round(ms * fs / 1000)) for kind, ms in MIN_MS.items()}
+    raw = runs(classes)
+    joined: list[tuple[str, int, int]] = []
+    gaps: list[list[tuple[int, int]]] = []
+    for kind, s, e in raw:
+        if joined and joined[-1][0] == kind and s - joined[-1][2] - 1 < gap:
+            gaps[-1].append((joined[-1][2] + 1, s - 1))
+            joined[-1] = (kind, joined[-1][1], e)
+        else:
+            joined.append((kind, s, e))
+            gaps.append([])
+    kept = [(kd, s, e, g) for (kd, s, e), g in zip(joined, gaps) if e - s + 1 >= shortest[kd] and inside(s, e)]
+    dropped = [(kd, s, e) for kd, s, e in joined if e - s + 1 < shortest[kd] and inside(s, e)]
+    assert [(kd, s, e) for kd, s, e, _ in kept] == [r for r in clean(raw, fs) if inside(r[1], r[2])]
+    waves = [w for w in waves_from_classes(classes, signal, fs) if inside(w.onset, w.offset)]
+    marks = [m for m in rec.marks[lead] if start <= m.peak < stop]
+    errors_ms = []
+    for w in waves:
+        m = min((m for m in marks if m.kind == w.kind), key=lambda m: abs(m.peak - w.peak))
+        errors_ms += [abs(a - b) * 1000 / fs for a, b in ((w.onset, m.onset), (w.peak, m.peak), (w.offset, m.offset)) if b is not None]
+
+    fig = plt.figure(figsize=(11.0, 4.24), dpi=150)
+    left, width = 20 / 1100, 1060 / 1100
+
+    def frac(px: float) -> float:  # pixels from the top of the 1100 x 424 slide box -> figure fraction
+        return 1 - px / 424
+
+    def band(top_px: float, regions: list[tuple[str, int, int]]) -> Axes:
+        ax = fig.add_axes((left, frac(top_px + 24), width, 24 / 424))
+        ax.set_xlim(start, stop)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        ax.add_patch(Rectangle((start, 0), stop - start, 1, facecolor="white", edgecolor=GRID, linewidth=0.8))
+        for kind, s, e in regions:
+            if inside(s, e):
+                ax.add_patch(Rectangle((max(s, start), 0), min(e + 1, stop) - max(s, start), 1, facecolor=WAVE[kind], edgecolor="none"))
+        return ax
+
+    ax1 = band(28, raw)
+    ax2 = band(118, [(kd, s, e) for kd, s, e, _ in kept])
+    fig.text(left, frac(21), "1  Model output: one class per sample", fontsize=11, fontweight="bold", color=INK)
+    fig.text(left, frac(111), "2  Clean-up: pieces under 10 ms apart joined; P and QRS under 20 ms, T under 40 ms dropped", fontsize=11, fontweight="bold", color=INK)
+    fig.text(left, frac(175), "3  Points on the filtered signal", fontsize=11, fontweight="bold", color=INK)
+
+    # What the clean-up did, marked on row 1.
+    one_gap = sorted({b - a + 1 for _, _, _, g in kept if len(g) == 1 for a, b in g})
+    for kind, s, e, g in kept:
+        if len(g) >= 2:
+            ax1.plot([s, s, e + 1, e + 1], [-0.12, -0.32, -0.32, -0.12], color=INK2, linewidth=0.9, clip_on=False)
+            ax1.text((s + e + 1) / 2, -1.05, f"{len(g) + 1} {kind} pieces, joined", ha="center", va="center", fontsize=10, color=INK)
+        elif len(g) == 1:
+            a, b = g[0]
+            ax1.text((a + b + 1) / 2, 1.42, "▼", ha="center", va="center", fontsize=8, color=INK)
+    if one_gap:
+        size = one_gap[0] if len(one_gap) == 1 else f"{one_gap[0]}–{one_gap[-1]}"
+        fig.text(left + width, frac(21), f"▼ {size}-sample gaps, joined", ha="right", fontsize=10, color=INK)
+    if dropped:
+        kinds = sorted({kd for kd, _, _ in dropped})
+        s0, e0 = min(s for _, s, _ in dropped), max(e for _, _, e in dropped)
+        ax1.plot([s0, s0, e0 + 1, e0 + 1], [-0.12, -0.32, -0.32, -0.12], color=INK2, linewidth=0.9, clip_on=False)
+        ax1.text((s0 + e0 + 1) / 2, -1.05, f"{len(dropped)} {'/'.join(kinds)} blips, dropped", ha="center", va="center", fontsize=10, color=INK)
+
+    ax3 = fig.add_axes((left, frac(392), width, (392 - 186) / 424))
+    t = np.arange(start, stop)
+    lo, hi = signal[start:stop].min(), signal[start:stop].max()
+    pad = 0.12 * (hi - lo)
+    ax3.set_xlim(start, stop)
+    ax3.set_ylim(lo - 1.6 * pad, hi + 1.5 * pad)
+    for w in waves:
+        ax3.axvspan(w.onset, w.offset + 1, color=WAVE[w.kind], alpha=0.12, linewidth=0)
+        for edge in (w.onset + 0.5, w.offset + 0.5):
+            ax3.axvline(edge, color=WAVE[w.kind], linewidth=1.6)
+        ax3.text((w.onset + w.offset + 1) / 2, hi + 1.0 * pad, w.kind, ha="center", va="center", fontsize=10, fontweight="bold", color=INK)
+    ax3.plot(t + 0.5, signal[start:stop], color=INK, linewidth=1.4, zorder=3)
+    for w in waves:
+        ax3.scatter([w.peak + 0.5], [signal[w.peak]], s=48, color=WAVE[w.kind], edgecolor=SURFACE, linewidth=1.5, zorder=5)
+    for m in marks:
+        for point in (m.onset, m.peak, m.offset):
+            if point is not None:
+                ax3.plot([point + 0.5], [lo - 1.25 * pad], marker="^", markersize=6, color=INK, linestyle="none", zorder=4)
+    ticks = np.arange(np.ceil(start / fs * 10) / 10, stop / fs, 0.1)
+    ax3.set_xticks(ticks * fs)
+    ax3.set_xticklabels([f"{x:.1f}" for x in ticks[:-1]] + [f"{ticks[-1]:.1f} s"], fontsize=9.5)
+    ax3.set_yticks([])
+    ax3.grid(False)
+    for side in ("left", "top", "right"):
+        ax3.spines[side].set_visible(False)
+    ax3.tick_params(axis="x", length=0, pad=4)
+    handles = [
+        Line2D([], [], marker="^", color=INK, linestyle="none", markersize=6, label="cardiologists' marks"),
+        Line2D([], [], marker="o", color=INK2, markeredgecolor=SURFACE, linestyle="none", markersize=7, label="decoded peak"),
+        Line2D([], [], color=INK2, linewidth=1.6, label="decoded onset and offset"),
+    ]
+    fig.legend(handles=handles, loc="lower right", bbox_to_anchor=(left + width, frac(186)), ncol=3, fontsize=9.5, handletextpad=0.4, columnspacing=1.2, borderaxespad=0)
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / "fig_decoder_steps.png"
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"decoder example: largest gap between a decoded point and its mark {max(errors_ms):.0f} ms")
+    return path
+
+
 if __name__ == "__main__":
     import sys
 
     print("wrote", preprocess_steps())
+    print("wrote", decoder_steps())
     if "--states" in sys.argv:  # path to a downloaded /vol/states/<revision>/115.npy
         print("wrote", states_projection(Path(sys.argv[sys.argv.index("--states") + 1])))
     if STATES_CACHE.exists():
