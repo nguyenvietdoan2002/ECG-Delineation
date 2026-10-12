@@ -560,18 +560,19 @@ blocks 588,960, transposed convolutions 87,280, output 816.
 
 ## 20. The rule-based baseline: `neurokit.py`, `emrich2024.py`, `run_neurokit.py`
 
-**Visual:** a table: Emrich et al. 2024 single-lead row against our lead-I reproduction (means and
-within-recording SDs within 0.3 ms).
+**Visual:** reduced on 2026-10-12 to three highlight cards and one table. The table puts our lead-I run
+next to Emrich et al. 2024, Table II, for all nine points: mean, within-recording SD and F1, paper and
+ours side by side, our SDs in blue and our P-wave F1 in orange. The footer says how `neurokit.py` calls
+the `neurokit2` package (0.2.13 from PyPI).
 
-**Bullets:**
-- `NeuroKitProminence.delineate`: NeuroKit2 0.2.13, `ecg_clean` default, `ecg_peaks` default R-peaks,
-  `ecg_delineate(method="prominence")`, one lead at a time; a lead that raises counts as no predictions
-- `prominence` is the method's best on LUDB per its paper (Emrich et al., EUSIPCO 2024), which NeuroKit2
-  ported in PR #1053
-- `emrich2024.py` holds the paper's Table II; `run_neurokit.py` runs all 200 records on Modal CPU and
-  checks lead I against the paper: means and within-recording SDs agree within 0.3 ms at all nine points
-- P-wave F1 is lower than the paper's (91.8 vs 99.8) because our scorer counts a P detection during atrial
-  fibrillation as a false positive; the paper evidently did not
+**Highlight cards:**
+- Reproduced: error SDs within 0.3 ms of the paper at all nine points; means within 0.5 ms for P and QRS
+  and within 2.6 ms for T. Our scorer measures what the paper measured
+- One deliberate difference: P-wave F1 92%, not 99.8%. NeuroKit2 reports a P wave on every beat, even
+  in atrial fibrillation; we count those as false positives. 191 of the 247 extra lead-I P onsets come
+  from 18 AF or flutter people (decision 48)
+- The bar to beat: 31.8 ms primary SD over 12 leads, more than twice the TimesFM head (14.1 ms) and the
+  U-Net (16.0 ms)
 
 **Notes:** The baseline was reproduced and checked before any model was trained, which is how we know the
 scorer is right: a scorer bug would have shown up as a disagreement with a published table. The FastNVG

@@ -71,8 +71,9 @@ Other single-lead (lead I) rows in the same table: NeuroKit2 `dwt` F1 99.25 / 98
   12-lead trained models can be read against them, with the caveat that those rows include a
   multi-lead voting step.
 
-**Outcome (2026-10-10, `results/neurokit_prominence.json`):** our lead-I means and within-recording
-SDs match the single-lead rows within 0.3 ms for all nine points; F1 matches within 1 point for the
+**Outcome (2026-10-10, `results/neurokit_prominence.json`):** our lead-I within-recording SDs match the
+single-lead rows within 0.3 ms for all nine points, and the means within 0.5 ms at the P and QRS points and
+within 2.6 ms at the T points (decision 71); F1 matches within 1 point for the
 QRS and T points. P-wave F1 is 91.8% against 99.8% because the paper evidently did not count P
 detections on beats without a P annotation as false positives (AF/flutter people and sinus beats with
 no P marked in lead I); our scorer does. See decision 48. The FastNVG variant
