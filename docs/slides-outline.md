@@ -650,24 +650,40 @@ beats the U-Net" is "your U-Net is weak"; the answer is that it uses the same re
 within-recording errors and F1 sit in the range of published LUDB U-Nets. We did not help either model
 beyond this table.
 
-## 23. `train_fold.py` and `launch_m4.py`: one fold, one container
+## 23. Running the folds: `train_fold.py` and `launch_m4.py`
 
-**Visual:** a container timeline: load 29 GB (35 s) → nine models train jointly (76 to 109 min) → stream 40
-test people (17 s) → write weights, predictions, JSON.
+Redrawn on 2026-10-12 around the purpose of each file, with three highlight cards.
 
-**Bullets:**
-- Per fold: probe, head and U-Net × seeds 0, 1, 2 = nine trainees in one T4 container with 40 to 64 GB RAM
-- Test people are read only after training ends, one at a time, so their states never share memory with
-  training
-- Outputs: `/vol/models/<run>/*.pt` (never downloaded), `results/m4/m4_fold<k>.json` (histories, per-fold
-  test report), `results/predictions/m4_fold<k>_<model>.json` (every point, per seed)
-- `::fetch` copies a finished run's files from the Volume; `launch_m4.py` spawns the five folds on the
-  deployed app so no client has to stay connected (decision 69)
-- The M3 version of this script trained fold 0 with one seed and scored its validation people only
+**Visual:** top, who runs where. On the laptop, `launch_m4.py` plans each fold (its people, the git
+tag), spawns `train_fold` on the deployed app five times, saves the call ids and exits. On Modal, five T4
+containers run in parallel, one per fold, each training on 160 people and predicting the other 40. They
+write to the Modal Volume: `models/<run>/*.pt` (45 trained models that never leave), `checkpoints/<run>.pt`
+(the whole training state after every epoch), `results/<run>.json` (histories, timings, git tag,
+scores) and `predictions/<run>_<model>.json` (every point of every test person and seed). An arrow back
+to the laptop shows `train_fold.py::fetch` copying each finished run into `results/`. Bottom, inside one
+container (`train_fold()`, T4, 40 to 64 GiB of RAM): 1 load the 128 training and 32 validation people's
+signals, labels and states, 28.6 GiB, in 33 to 36 s; 2 train the nine models jointly, slide 21, 76 to
+109 min; 3 save the weights, free the training states, then read the 40 test people one at a time,
+states → 9 models → decoder → points, 17 to 18 s; 4 score the fold for information only, write the
+results and predictions to the Volume and commit it. Two callouts: the test people stay unseen until
+training ends, and the verdict pools all 200 people (slide 27); every results JSON records the git tag
+`step1-frozen`, the people's ids, the TimesFM revision, the GPU, timings and peak GPU memory (4.7 GiB),
+and the five folds started within two seconds and finished 77 to 110 minutes later.
 
-**Notes:** One lesson from launch day: `modal run --detach` keeps only the last spawned function alive if
-the client disconnects, so the first launch was stopped within minutes and the folds were relaunched on a
-deployed function from a client that exits immediately. Each run records the git tag it ran from.
+**Highlight cards:**
+- File 1, `train_fold.py`, one fold start to finish: the GPU function, plus two laptop commands, `main`
+  (starts folds and waits for their results) and `fetch` (copies a finished run back later)
+- File 2, `launch_m4.py`, start five folds and walk away: spawns the five runs on the deployed app and
+  exits at once; the call ids go to `results/m4/calls.json`; `--poll` reports each fold as it ends
+- Why the second file exists, no laptop left waiting: `modal run --detach` keeps only the last spawned
+  function alive once the client disconnects; the first launch was stopped within minutes and relaunched
+  this way (decision 69)
+
+**Notes:** `launch_m4.py` imports `train_fold.py` and reuses its planner, so a launched fold gets exactly
+the arguments `main` would give it. The M3 version of the fold script trained fold 0 with one seed and
+scored its validation people only. The commands, in order: `modal deploy scripts/train_fold.py`, `python
+scripts/launch_m4.py results/m4/calls.json`, optionally `--poll`, then
+`modal run scripts/train_fold.py::fetch --run m4_fold<k>` for each fold.
 
 ## 24. `decode.py`, `delineate.py`, `trained.py`: from class maps to points
 
