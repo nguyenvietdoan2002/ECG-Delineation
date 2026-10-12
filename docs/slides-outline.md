@@ -1,8 +1,8 @@
 # Slide outline: "Frozen TimesFM 3 states for ECG wave delineation: what we built and what we found"
 
-Brief for the deck, agreed on 2026-10-11: a 60-minute live talk in English, now 35 slides (36 agreed;
-on 2026-10-12 slides 17 to 19 were added, absorbing the old `models.py` slide, and the tests, rigor
-and M3 deep-dive slides were removed), for
+Brief for the deck, agreed on 2026-10-11: a 60-minute live talk in English, now 34 slides (36 agreed;
+on 2026-10-12 slides 17 to 19 were added, absorbing the old `models.py` slide, and the tests, rigor,
+M3 deep-dive and where-the-gain-comes-from slides were removed), for
 Meddies teammates who know machine learning but not TimesFM 3, LUDB or ECG delineation. Thematic order:
 question, grounding, pipeline, data, processing, models, baseline, training, decoding, evaluation,
 results, limits, process, close. Every source file and script is walked in the main flow. Terms are
@@ -10,8 +10,8 @@ defined on the slide where they first matter. Figures are the repository's PNGs.
 from commit `e107f87` (tag `step1-frozen` plus the post-freeze launch tooling and results).
 
 Numbers: every result number comes from `docs/report.md` and `results/m4/summary.json` (five folds, three
-seeds, 200 people). M3 development figures and numbers appear only where labelled development-only (slides 6, 22, 24, 30 and
-31). Speaker notes are
+seeds, 200 people). M3 development figures and numbers appear only where labelled development-only (slides 6, 22, 24 and
+30). Speaker notes are
 what the presenter says; bullets are what the slide shows.
 
 Designed on 2026-10-11 as a claude.ai Design canvas, one 1920 x 1080 artboard per slide in the agreed
@@ -22,10 +22,9 @@ Visual assets to reuse (all PNG, 150 dpi, light surface):
 
 | File | Used on |
 |---|---|
-| `results/m3/fig_overlay_typical.png` | 6, 31 |
-| `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 31 |
+| `results/m3/fig_overlay_typical.png` | 6, 30 |
+| `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 30 |
 | `results/m3/fig_training.png` | 22 |
-| `results/m3/fig_layer_weights.png` | 30 |
 | `results/m4/fig_points.png` | 29 |
 | `results/m4/fig_folds.png` | 28 |
 
@@ -919,27 +918,7 @@ the R peak one or two samples before the signal's maximum, which the decoder pic
 T offset is the hardest point in most leads; P onset is harder in aVL for the head and the probe, and in V1
 for the probe.
 
-## 30. Results: where the gain comes from
-
-**Visual:** `results/m3/fig_layer_weights.png`; a small comparison table with published numbers.
-
-**Bullets:**
-- Probe vs U-Net: 15.80 vs 16.01 ms, statistically indistinguishable: a linear readout of one 64 ms block
-  already matches a supervised U-Net
-- Head vs probe: [−2.00, −1.38] ms: six neighbouring blocks and one non-linearity add about 1.7 ms
-- Rhythm: AF people are harder for everyone (head 19.0 vs 13.6 ms sinus; U-Net 23.5 vs 15.2); the head's
-  margin is larger on AF people (4.5 ms) than on sinus people (1.6 ms)
-- Published comparisons: NeuroKit2's within-recording SDs reproduce Emrich et al.'s single-lead table;
-  our U-Net's pooled SDs are below Moskalenko et al.'s LUDB U-Net at every CSE point
-- Layer weights: the probe leans on layers 4 to 8 and 11; the head stays near uniform because its
-  projection can pick features inside every layer
-
-**Notes:** The pattern says what the states are good at: context. Where the signal is sharp, at the QRS,
-all trained models are within 2 ms of each other; where it is ambiguous, at the T wave and in AF, the head's
-view across 12 leads and 10 seconds wins. The per-layer probe ablation that would pin down which layers
-carry the information was deferred.
-
-## 31. What predictions look like
+## 30. What predictions look like
 
 **Visual:** `results/m3/fig_overlay_typical.png`, `fig_overlay_worst.png`, `fig_overlay_af.png`
 (development people).
@@ -955,7 +934,7 @@ carry the information was deferred.
 sinus record, and an AF record. The failure modes are honest ones: an unmarked but real P wave, a fragmented
 P in a lead where it is tiny, a wide fibrillation QRS.
 
-## 32. Limits and what was left out
+## 31. Limits and what was left out
 
 **Visual:** a plain list.
 
@@ -973,7 +952,7 @@ P in a lead where it is tiny, a wide fibrillation QRS.
 Everything in this list is a separate decision; nothing here was skipped silently, each has a decision-log
 entry.
 
-## 33. How it was built
+## 32. How it was built
 
 **Visual:** the milestone timeline with commit count and the tooling.
 
@@ -991,7 +970,7 @@ entry.
 tests turned refactors into non-events; the milestone reports caught the one thing that could have gone
 wrong, the launch mode, within minutes.
 
-## 34. Run it yourself
+## 33. Run it yourself
 
 **Visual:** the command list; where the outputs land.
 
@@ -1008,7 +987,7 @@ wrong, the launch mode, within minutes.
 **Notes:** Everything a teammate needs is in the README. The states stay in the Volume, so a new head can
 be trained without re-extracting; the trained weights stay there too, under the licence.
 
-## 35. Close
+## 34. Close
 
 **Visual:** three lines.
 
