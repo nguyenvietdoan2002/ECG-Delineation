@@ -579,21 +579,34 @@ scorer is right: a scorer bug would have shown up as a disagreement with a publi
 R-peak variant the paper used was also run but missed many beats in NeuroKit2's port, so the baseline uses
 the library defaults, which is what a user gets.
 
-## 21. `train.py`: one loop for every model
+## 21. `train.py`: one loop trains all nine models of a fold
 
-**Visual:** snippet S2; a timeline of one epoch showing one batch moved to the GPU and nine models stepping
-on it.
+Redrawn on 2026-10-12 as a picture of one training step and one epoch, with three highlight cards.
 
-**Bullets:**
-- `targets_for(marks, 4992)`: the labels with −1 at masked samples; the loss ignores −1
-- `TensorSource`: all recordings' inputs in one CPU tensor, pinned buffers for overlapped copies, an
-  optional `transform` run once per batch on the device (the layer normalisation)
-- `Trainee`: one model with its own AdamW, history, best weights and early-stopping state
-- `train_jointly`: all trainees train over the same shuffled batches; each stops on its own validation
-  loss and ends with its best weights; the whole state (models, optimisers, shuffling RNG) is checkpointed
-  after every epoch and a resumed run reproduces the uninterrupted one bit for bit (tested)
+**Visual:** top, one batch: 8 of the fold's 128 training people, reshuffled every epoch in one order
+shared by all nine models. It splits into three inputs: TimesFM states (8, 20, 12, 156, 2560) in fp16,
+1.5 GB, copied to the GPU once and normalised once by `normalize_layers` for all six state models; the
+filtered signal (8, 12, 4992), copied once for the three U-Nets; and the per-sample labels
+(8, 12, 4992), −1 where masked. Nine chips in the models' colours: linear probe, main head and U-Net,
+each with seeds 0, 1 and 2. One box below: each of the nine, on every batch, computes scores
+(8, 4, 12, 4992), the cross-entropy against the labels with masked samples ignored, a backward pass and
+its own AdamW step (lines 227–240). Bottom, the epoch loop as four steps (lines 242–262): validation loss
+on the 32 validation people; a new best is copied; 20 epochs without one stops that model only; when all
+have stopped or epoch 200 is reached, each gets its best weights back. Under it a chart of the final
+runs, median of 15 per model: the probe's best after 123 epochs and stop after 143 (the 15 runs stopped
+between 106 and 187), the head 28 and 48 (47 to 58), the U-Net 76 and 96 (65 to 178). No run reached
+the 200-epoch cap.
 
-**Snippet S2, `src/ecgdelin/train.py`, the inner loop of `train_jointly`:**
+**Highlight cards:**
+- Load once, train nine: the fold's 160 training and validation people are loaded once, 28.6 GiB of
+  states in RAM; each batch reaches the GPU once per input kind and six models share one normalised copy
+- A fair race: seeds 0, 1 and 2 change only the starting weights; all nine models see the same batches
+  in the same order under the same recipe (slide 22)
+- Safe to interrupt: weights, optimisers and the shuffling generator are saved after every epoch; a
+  resumed run matches an uninterrupted one bit for bit (`test_train.py`)
+
+**Snippet S2, `src/ecgdelin/train.py`, the inner loop of `train_jointly` (not on the slide; for
+questions):**
 
 ```python
         for b in _batches([train_idx[i] for i in order], config.batch_size):
@@ -613,9 +626,11 @@ on it.
 ```
 
 **Notes:** The joint loop exists for cost: RAM-hours cost as much as the GPU on Modal, and a fold's states
-take 29 GB, so loading them once and training every model and seed over the same stream keeps a fold at
-about an hour and a half. The three seeds differ in initialisation only; they share the batch order, which
-is what decision 31 pre-registered.
+take 28.6 GiB, so loading them once and training every model and seed over the same stream keeps a fold
+at 76 to 109 minutes of training. The three seeds differ in initialisation only; they share the batch
+order, which is what decision 31 pre-registered. The chart explains slide 22's curves: the head peaks
+early and stops after about 48 epochs, the probe keeps improving slowly for over 120, and the U-Net
+varies most between runs.
 
 ## 22. The training recipe
 
