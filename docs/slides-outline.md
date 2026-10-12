@@ -10,7 +10,7 @@ defined on the slide where they first matter. Figures are the repository's PNGs.
 from commit `e107f87` (tag `step1-frozen` plus the post-freeze launch tooling and results).
 
 Numbers: every result number comes from `docs/report.md` and `results/m4/summary.json` (five folds, three
-seeds, 200 people). M3 development figures and numbers appear only where labelled development-only (slides 6, 22, 24 and 29 to
+seeds, 200 people). M3 development figures and numbers appear only where labelled development-only (slides 6, 22, 24, 30 and
 31). Speaker notes are
 what the presenter says; bullets are what the slide shows.
 
@@ -25,7 +25,6 @@ Visual assets to reuse (all PNG, 150 dpi, light surface):
 | `results/m3/fig_overlay_typical.png` | 6, 31 |
 | `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 31 |
 | `results/m3/fig_training.png` | 22 |
-| `results/m3/fig_per_lead.png` | 29 |
 | `results/m3/fig_layer_weights.png` | 30 |
 | `results/m4/fig_points.png` | 29 |
 | `results/m4/fig_folds.png` | 28 |
@@ -894,24 +893,31 @@ parameters.
 
 ## 29. Results: per point, against the CSE limits
 
-**Visual:** `results/m4/fig_points.png`; `results/m3/fig_per_lead.png` as a secondary image (development
-people, per lead).
+Redrawn on 2026-10-12 around one comparison table, with less text; two wrong statements of the earlier
+version were corrected (the probe does not meet every CSE limit within recordings; T offset is not the
+hardest point in every lead) and the development per-lead figure was dropped.
 
-**Bullets:**
-- Head, pooled / within-recording SD, ms (CSE 2σ): P onset 16.2 / 9.4 (10.2); P offset 14.2 / 8.4 (12.7);
-  QRS onset 8.7 / 5.5 (6.5); QRS offset 10.5 / 6.5 (11.6); T offset 20.9 / 11.1 (30.6)
-- Within recordings, the head, the U-Net and the probe meet every CSE limit; pooled, no method meets the
-  P-onset, P-offset or QRS-onset limits
-- Mean errors of the head and U-Net within ±1.1 ms at every boundary; QRS peaks read about +4 ms, because
-  LUDB marks the R peak one or two samples before the signal's maximum, which the decoder picks (the M3
-  deep dive in `docs/m3-report.md` traced this; its slide was removed on 2026-10-12)
-- T wave is where the head gains most: T onset 22.7 vs 28.9 ms, T offset 20.9 vs 25.2 ms (pooled)
-- Per lead (development people): T offset is the hardest point everywhere; P on/off hardest in V1, V2, aVL
+**Visual:** a table for the five CSE points: the CSE limit, then each method's pooled and within-recording
+SD, green below the limit and orange above, and a "limits met" row: pooled / within, head 2 / 5, U-Net
+1 / 5, probe 2 / 4, NeuroKit2 0 / 2. Below it `results/m4/fig_points.png` (all nine points) and three cards.
 
-**Notes:** The pooled SD is dominated by hard beats, matches to a neighbouring wave within 150 ms, and
+**Highlight cards:**
+- What the CSE limit is: twice the spread among the expert cardiologists of the CSE study (1985); under
+  it, a method is as consistent as the experts
+- Within recordings: the head and the U-Net meet all five limits; the probe misses P onset by 0.6 ms
+  (10.8 against 10.2); NeuroKit2 misses three
+- Pooled over all people: no method meets P onset, P offset or QRS onset; the head is lowest at every CSE
+  point and gains most on the T wave (T onset 22.7 vs 28.9 ms, T offset 20.9 vs 25.2 ms)
+
+**Notes:** The U-Net's pooled QRS-offset SD is 11.61 ms, above the 11.6 limit by 0.01 ms, so it counts as
+above. The pooled SD is dominated by hard beats, matches to a neighbouring wave within 150 ms, and
 between-person bias; the within-recording SD is what the Emrich paper reports and what clinicians compare
 to the CSE limits. Both are in the report; we chose the stricter one as the primary metric before the
-study, so the pass/fail against CSE is a secondary reading.
+study, so the pass/fail against CSE is a secondary reading. QRS peaks read about +4 ms because LUDB marks
+the R peak one or two samples before the signal's maximum, which the decoder picks (traced in
+`docs/m3-report.md`). Per lead (development people, `results/m3/fig_per_lead.png`, no longer on the slide):
+T offset is the hardest point in most leads; P onset is harder in aVL for the head and the probe, and in V1
+for the probe.
 
 ## 30. Results: where the gain comes from
 
