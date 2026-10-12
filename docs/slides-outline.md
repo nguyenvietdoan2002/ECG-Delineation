@@ -1,16 +1,17 @@
 # Slide outline: "Frozen TimesFM 3 states for ECG wave delineation: what we built and what we found"
 
-Brief for the deck, agreed on 2026-10-11: a 60-minute live talk in English, now 36 slides (36 agreed;
-on 2026-10-12 slides 17 to 19 were added, absorbing the old `models.py` slide, and the tests and rigor
-slides were removed), for
+Brief for the deck, agreed on 2026-10-11: a 60-minute live talk in English, now 35 slides (36 agreed;
+on 2026-10-12 slides 17 to 19 were added, absorbing the old `models.py` slide, and the tests, rigor
+and M3 deep-dive slides were removed), for
 Meddies teammates who know machine learning but not TimesFM 3, LUDB or ECG delineation. Thematic order:
 question, grounding, pipeline, data, processing, models, baseline, training, decoding, evaluation,
-rigor, results, limits, process, close. Every source file and script is walked in the main flow. Terms are
+results, limits, process, close. Every source file and script is walked in the main flow. Terms are
 defined on the slide where they first matter. Figures are the repository's PNGs. Code snippets are copied
 from commit `e107f87` (tag `step1-frozen` plus the post-freeze launch tooling and results).
 
 Numbers: every result number comes from `docs/report.md` and `results/m4/summary.json` (five folds, three
-seeds, 200 people). M3 numbers appear only on slide 28 and are labelled development-only. Speaker notes are
+seeds, 200 people). M3 development figures and numbers appear only where labelled development-only (slides 6, 22, 24 and 29 to
+31). Speaker notes are
 what the presenter says; bullets are what the slide shows.
 
 Designed on 2026-10-11 as a claude.ai Design canvas, one 1920 x 1080 artboard per slide in the agreed
@@ -21,14 +22,13 @@ Visual assets to reuse (all PNG, 150 dpi, light surface):
 
 | File | Used on |
 |---|---|
-| `results/m3/fig_overlay_typical.png` | 6, 32 |
-| `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 32 |
+| `results/m3/fig_overlay_typical.png` | 6, 31 |
+| `results/m3/fig_overlay_worst.png`, `results/m3/fig_overlay_af.png` | 31 |
 | `results/m3/fig_training.png` | 22 |
-| `results/m3/fig_per_lead.png` | 30 |
-| `results/m3/fig_layer_weights.png` | 31 |
-| `results/m3/fig_qrs_peak.png` | 28 |
-| `results/m4/fig_points.png` | 30 |
-| `results/m4/fig_folds.png` | 29 |
+| `results/m3/fig_per_lead.png` | 29 |
+| `results/m3/fig_layer_weights.png` | 30 |
+| `results/m4/fig_points.png` | 29 |
+| `results/m4/fig_folds.png` | 28 |
 
 New diagrams to draw (described where they appear): D1 pipeline (slide 9), D2 state extraction (slide 8),
 D3 three architectures (slide 16), D4 scoring chain (slides 24 to 26), D5 annotated beat (slide 4),
@@ -58,7 +58,7 @@ whole thing is reproducible from the repository, and I will end with how to run 
 - Why it matters: foundation models are cheap to reuse; a positive answer means their features carry
   sample-level cardiac morphology without any label-specific training of the backbone
 - Roadmap: ECG and LUDB grounding, TimesFM 3, the pipeline, data, processing, models, training, decoding,
-  evaluation, rigor, results, limits, process
+  evaluation, results, limits, process
 
 **Notes:** The question was fixed before any model was trained, together with the metric and the rule that
 decides the answer. Keep this in mind: nothing you will see was chosen after looking at a test result. The
@@ -118,8 +118,8 @@ cardiologists disagree about where a T wave ends.
 **Notes:** Two hundred people is small, which is why the whole study uses person-level cross-validation
 and confidence intervals from a bootstrap over people, never over beats. The unmarked first and last beats
 are a trap: a model that finds a real P wave there must not be punished, so those samples are masked out
-of both training and scoring. The one-sample peak offset was discovered in the M3 deep dive and comes
-back on slide 28.
+of both training and scoring. The one-sample peak offset was discovered in the M3 deep dive and is
+explained on slide 29.
 
 ## 6. A real LUDB record
 
@@ -873,28 +873,7 @@ their training people (Nadeau and Bengio 2003; Varoquaux 2018), which is why dec
 people under one paired bootstrap. `reporting.py` holds the shared table and figure style. A two-epoch
 rehearsal of the whole chain ran on fold 0 before the freeze; the report script was frozen with the rest.
 
-## 28. The M3 deep dive, development only
-
-**Visual:** `results/m3/fig_qrs_peak.png`; the sample table around one QRS mark (record 115, lead II: mark
-at sample 935 with 0.495 mV, maximum at 936 with 0.500 mV).
-
-**Bullets:**
-- Before the freeze, fold 0's 32 validation people were examined in `docs/m3-report.md` (`analysis.py`,
-  `m3_classes.py`, `m3_report.py`)
-- CPU re-inference reproduced every one of the 384 stored lead predictions; the local scorer reproduced
-  the JSON exactly
-- Orphans are almost all unscored edge waves (U-Net 708 of 714, head 220 of 228); none unanchored
-- The +3 ms QRS-peak bias belongs to the decoder: LUDB's peak marks sit one sample before the signal's
-  extremum for 50% of QRS beats and two samples for 20%; every stricter R-wave rule is worse, so the rule
-  stayed and the offset is stated, not corrected
-- All models invent some P waves on AF people; reported by rhythm rather than hidden
-
-**Notes:** These are development numbers, not results: 32 people, one seed, the people used for early
-stopping. The point of the deep dive was to find bugs while fixing them was still legitimate; it found
-none that needed a change. The one-sample offset is a nice example of a dataset convention one would never
-see without pushing the cardiologists' own regions through the decoder.
-
-## 29. Results: the verdict
+## 28. Results: the verdict
 
 **Visual:** `results/m4/fig_folds.png`; the headline table.
 
@@ -913,7 +892,7 @@ seed. The U-Net itself beats NeuroKit2 by 16 ms, so most of the distance to the 
 "training on LUDB"; the TimesFM states add the last two milliseconds on top of that with a quarter of the
 parameters.
 
-## 30. Results: per point, against the CSE limits
+## 29. Results: per point, against the CSE limits
 
 **Visual:** `results/m4/fig_points.png`; `results/m3/fig_per_lead.png` as a secondary image (development
 people, per lead).
@@ -923,8 +902,9 @@ people, per lead).
   QRS onset 8.7 / 5.5 (6.5); QRS offset 10.5 / 6.5 (11.6); T offset 20.9 / 11.1 (30.6)
 - Within recordings, the head, the U-Net and the probe meet every CSE limit; pooled, no method meets the
   P-onset, P-offset or QRS-onset limits
-- Mean errors of the head and U-Net within ±1.1 ms at every boundary; QRS peaks carry the +4 ms decoder
-  offset
+- Mean errors of the head and U-Net within ±1.1 ms at every boundary; QRS peaks read about +4 ms, because
+  LUDB marks the R peak one or two samples before the signal's maximum, which the decoder picks (the M3
+  deep dive in `docs/m3-report.md` traced this; its slide was removed on 2026-10-12)
 - T wave is where the head gains most: T onset 22.7 vs 28.9 ms, T offset 20.9 vs 25.2 ms (pooled)
 - Per lead (development people): T offset is the hardest point everywhere; P on/off hardest in V1, V2, aVL
 
@@ -933,7 +913,7 @@ between-person bias; the within-recording SD is what the Emrich paper reports an
 to the CSE limits. Both are in the report; we chose the stricter one as the primary metric before the
 study, so the pass/fail against CSE is a secondary reading.
 
-## 31. Results: where the gain comes from
+## 30. Results: where the gain comes from
 
 **Visual:** `results/m3/fig_layer_weights.png`; a small comparison table with published numbers.
 
@@ -953,7 +933,7 @@ all trained models are within 2 ms of each other; where it is ambiguous, at the 
 view across 12 leads and 10 seconds wins. The per-layer probe ablation that would pin down which layers
 carry the information was deferred.
 
-## 32. What predictions look like
+## 31. What predictions look like
 
 **Visual:** `results/m3/fig_overlay_typical.png`, `fig_overlay_worst.png`, `fig_overlay_af.png`
 (development people).
@@ -969,7 +949,7 @@ carry the information was deferred.
 sinus record, and an AF record. The failure modes are honest ones: an unmarked but real P wave, a fragmented
 P in a lead where it is tiny, a wide fibrillation QRS.
 
-## 33. Limits and what was left out
+## 32. Limits and what was left out
 
 **Visual:** a plain list.
 
@@ -987,7 +967,7 @@ P in a lead where it is tiny, a wide fibrillation QRS.
 Everything in this list is a separate decision; nothing here was skipped silently, each has a decision-log
 entry.
 
-## 34. How it was built
+## 33. How it was built
 
 **Visual:** the milestone timeline with commit count and the tooling.
 
@@ -1005,7 +985,7 @@ entry.
 tests turned refactors into non-events; the milestone reports caught the one thing that could have gone
 wrong, the launch mode, within minutes.
 
-## 35. Run it yourself
+## 34. Run it yourself
 
 **Visual:** the command list; where the outputs land.
 
@@ -1022,7 +1002,7 @@ wrong, the launch mode, within minutes.
 **Notes:** Everything a teammate needs is in the README. The states stay in the Volume, so a new head can
 be trained without re-extracting; the trained weights stay there too, under the licence.
 
-## 36. Close
+## 35. Close
 
 **Visual:** three lines.
 
