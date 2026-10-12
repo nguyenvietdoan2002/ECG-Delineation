@@ -843,23 +843,34 @@ averaged per fold: five fold numbers are few and correlated (Nadeau and Bengio 2
 F1 averaged over folds is biased (Forman and Scholz 2010). Why averaged over seeds inside a draw: the
 verdict is about the recipe's typical model, not one lucky seed.
 
-## 27. `crossval.py` and `final_report.py`: pooling the folds
+## 27. `crossval.py` and `final_report.py`: five folds, one result
 
-**Visual:** five test folds assembling into one 200-person prediction set per seed; the report's sections.
+Redrawn on 2026-10-12 as two pictures and three cards (the slide builder is a scratch script; the numbers
+come from `results/m4/summary.json`).
 
-**Bullets:**
-- `assemble(folds, by_fold)`: every person's predictions from the fold that held them out; refuses a
-  missing person, a duplicate, or a prediction for someone outside a fold's test set
-- `per_fold_primary`: the fold-by-fold numbers, information only
-- `final_report.py`: loads the five runs and NeuroKit2's predictions, scores each seed, computes the
-  seed-averaged primary with its interval, the verdicts for five pairs, per-point and per-rhythm tables,
-  two figures; writes `docs/report.md` and `results/m4/summary.json`
-- `reporting.py`: shared table and figure style (the same neutral palette in every figure)
-- A two-epoch rehearsal of the whole chain ran on fold 0 before the freeze
+**Visual:** 1, `crossval.py` pools the folds: five fold tiles, each with its 40 held-out people as dots,
+arrows into `assemble` ("every person exactly once, from the one fold that held them out", run once per
+model and per seed) with its three refusals (a person missing, a person from another fold, a person
+predicted twice), then one box with the same 200 dots: one prediction set of 200 people, each predicted by
+models that never saw them, one set per seed. 2, `final_report.py`, the only place the five runs meet, as
+five steps: check that each run's fold and test people match the saved split; load the 200 recordings and
+every model's predictions per fold and seed plus NeuroKit2's; pool per seed with `assemble`; score (the
+primary SD with its 95% interval, verdicts for five pairs, tables per point, rhythm and fold); write
+`docs/report.md`, two figures and `results/m4/summary.json`.
 
-**Notes:** The refusal rules in `assemble` are there because a silent gap, one person missing from one
-fold, would bias the pooled metric without any visible error. The report script is the only place where
-the five runs meet; it was written and rehearsed before the real runs, then frozen with the rest.
+**Highlight cards:**
+- `assemble`, no silent gaps: a missing person, a stranger or a duplicate stops the run; a quietly missing
+  hard case would make the pooled score look better than it is
+- `per_fold_primary`, per fold is information only: five 40-person numbers are noisy, so the verdict pools
+  all 200 people; still, the head wins in every fold, head minus U-Net −1.93, −1.79, −1.48, −1.91 and
+  −2.27 ms for folds 0 to 4
+- `final_report.py`, where the verdict is computed: the verdict, the headline table and the paper's pooled
+  numbers come from its outputs; its one change after the freeze fixed image links (decision 70)
+
+**Notes:** The five per-fold numbers are correlated as well as noisy, because the folds share most of
+their training people (Nadeau and Bengio 2003; Varoquaux 2018), which is why decision 64 pools all 200
+people under one paired bootstrap. `reporting.py` holds the shared table and figure style. A two-epoch
+rehearsal of the whole chain ran on fold 0 before the freeze; the report script was frozen with the rest.
 
 ## 28. Tests: two seams and synthetic hearts
 
