@@ -1,0 +1,76 @@
+{
+ "name": "ptbxl_states",
+ "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+ "n_ecgs": 5000,
+ "n_files": 5000,
+ "chunks": [
+  {
+   "started": "2026-10-16T01:32:00+00:00",
+   "git": "478fe8a",
+   "chunk": 0,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 1000,
+   "written": 1000,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.9176185681010005,
+   "max_abs_state": 979.0,
+   "finished": "2026-10-16T02:29:23+00:00"
+  },
+  {
+   "started": "2026-10-16T01:32:00+00:00",
+   "git": "478fe8a",
+   "chunk": 1,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 1000,
+   "written": 1000,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.9484569577540047,
+   "max_abs_state": 1000.5,
+   "finished": "2026-10-16T02:29:44+00:00"
+  },
+  {
+   "started": "2026-10-16T01:32:00+00:00",
+   "git": "478fe8a",
+   "chunk": 2,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 1000,
+   "written": 1000,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.8944559353419983,
+   "max_abs_state": 1032.0,
+   "finished": "2026-10-16T02:27:50+00:00"
+  },
+  {
+   "started": "2026-10-16T01:32:00+00:00",
+   "git": "478fe8a",
+   "chunk": 3,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 1000,
+   "written": 1000,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.9230220681820023,
+   "max_abs_state": 985.5,
+   "finished": "2026-10-16T02:29:15+00:00"
+  },
+  {
+   "started": "2026-10-16T01:32:00+00:00",
+   "git": "478fe8a",
+   "chunk": 4,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 1000,
+   "written": 1000,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 2.176561389876012,
+   "max_abs_state": 1038.0,
+   "finished": "2026-10-16T03:03:56+00:00"
+  }
+ ],
+ "path": "/vol/states/43046b85ec22d584a13f8098c2ed39c889e129c2/ptbxl",
+ "shape_per_record": [
+  20,
+  12,
+  156,
+  2560
+ ],
+ "dtype": "float16"
+}
