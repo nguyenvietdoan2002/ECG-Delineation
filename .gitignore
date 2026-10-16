@@ -14,3 +14,5 @@ __pycache__/
 !results/m3/*_classes.npz
 # The deck figure cache: a 5-component projection of one record's states, so the figure needs no 183 MB download.
 !results/deck/*.npz
+# Local exchange files (e.g. the MATLAB input and output of scripts/ecgdeli_ludb.py); never committed.
+work/
