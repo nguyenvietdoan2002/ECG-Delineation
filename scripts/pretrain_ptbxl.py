@@ -28,7 +28,7 @@ CALLS = REPO / "results" / "ptbxl_pretrain_calls.json"
 RUN = "ptbxl_pretrain_s{seed}"
 
 
-@app.function(gpu="T4", volumes={VOL: volume}, timeout=12 * 3600, memory=(16384, 32768), retries=2)
+@app.function(gpu="T4", cpu=4.0, volumes={VOL: volume}, timeout=12 * 3600, memory=(16384, 32768), retries=2)  # 4 cores: file reads starved the heartbeat on the default share
 def pretrain_head(run: str, seed: int, train_ids: list[int], stop_ids: list[int], revision: str, max_epochs: int, meta: dict[str, Any]) -> dict[str, Any]:
     import time
 
@@ -41,13 +41,16 @@ def pretrain_head(run: str, seed: int, train_ids: list[int], stop_ids: list[int]
     device = torch.device("cuda")
     ids = list(train_ids) + list(stop_ids)
     t0 = time.perf_counter()
-    targets = []
-    for i in ids:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def target(i: int) -> np.ndarray:
         with np.load(Path(VOL) / "ptbxl" / "records" / f"{i}.npz") as z:
-            targets.append(targets_from_labels(z["classes"], z["mask"]))
-    targets_t = Targets(np.stack(targets))
+            return targets_from_labels(z["classes"], z["mask"])
+
+    with ThreadPoolExecutor(16) as pool:
+        targets_t = Targets(np.stack(list(pool.map(target, ids))))
     states_dir = Path(VOL) / "states" / revision / "ptbxl"
-    source = FileSource([states_dir / f"{i}.npy" for i in ids], transform=normalize_layers)
+    source = FileSource([states_dir / f"{i}.npy" for i in ids], transform=normalize_layers, threads=8)
     print(f"{run}: {len(train_ids)} train, {len(stop_ids)} stop, targets loaded in {time.perf_counter() - t0:.0f} s", flush=True)
 
     torch.manual_seed(seed)
@@ -81,6 +84,32 @@ def pretrain_head(run: str, seed: int, train_ids: list[int], stop_ids: list[int]
 @app.function(volumes={VOL: volume}, timeout=600)
 def read_result(run: str) -> str:
     return (Path(VOL) / "results" / f"{run}.json").read_text(encoding="utf-8")
+
+
+@app.function(volumes={VOL: volume}, timeout=600)
+def read_progress(run: str) -> dict[str, Any]:
+    """The running job's checks so far, from its checkpoint (written after every check)."""
+    import torch
+
+    volume.reload()
+    path = Path(VOL) / "checkpoints" / f"{run}.pt"
+    if not path.exists():
+        return {"checks": 0, "history": []}
+    state = torch.load(path, map_location="cpu", weights_only=False)["state"]
+    return {"checks": state["check"], "history": state["history"], "best_check": state["best_check"],
+            "best_val": state["best_val"], "stopped": state["stopped"], "seconds": state["seconds"]}
+
+
+@app.local_entrypoint()
+def progress(seed: int = 0) -> None:
+    run = RUN.format(seed=seed)
+    p = read_progress.remote(run)
+    out = REPO / "results" / f"{run}_progress.json"
+    out.write_text(json.dumps({"name": run, "read": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **p}, indent=1),
+                   encoding="utf-8", newline="\n")
+    print(f"{run}: {p['checks']} checks")
+    for h in p["history"]:
+        print(f"  epoch {h['epoch']:4.1f}: train {h['train_loss']:.4f}, stop-set {h['val_loss']:.4f}")
 
 
 def _git_head() -> str:
