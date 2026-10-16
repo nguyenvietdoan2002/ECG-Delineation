@@ -3,7 +3,16 @@ import torch
 from torch import nn
 
 from ecgdelin.preprocess import N_SAMPLES
-from ecgdelin.pretrain import FileSource, PretrainConfig, Targets, pretrain, targets_from_labels
+from ecgdelin.pretrain import (
+    FileSource,
+    MemorySource,
+    PretrainConfig,
+    Targets,
+    assign_leads,
+    pretrain,
+    read_npy,
+    targets_from_labels,
+)
 from ecgdelin.train import IGNORE
 
 
@@ -49,6 +58,35 @@ def test_file_source_reads_files_in_order(tmp_path) -> None:
     batch = FileSource(paths).load([2, 0])
     assert batch.shape == (2, 2, 12, 3)
     assert torch.equal(batch[0], torch.from_numpy(np.load(paths[2])))
+
+
+def test_read_npy_matches_numpy(tmp_path) -> None:
+    a = np.random.default_rng(1).normal(size=(3, 4, 5)).astype(np.float16)
+    np.save(tmp_path / "a.npy", a)
+    b = read_npy(tmp_path / "a.npy")
+    assert b.dtype == a.dtype and b.shape == a.shape and np.array_equal(a, b)
+
+
+def test_assign_leads_is_balanced_distinct_and_seeded() -> None:
+    leads = assign_leads(4500, 4, seed=0)
+    assert len(leads) == 4500 and all(len(set(x)) == 4 for x in leads)
+    counts = np.bincount(np.concatenate(leads), minlength=12)
+    assert (counts == 1500).all()
+    assert leads == assign_leads(4500, 4, seed=0) and leads != assign_leads(4500, 4, seed=1)
+    stop = assign_leads(500, 4, seed=0)
+    assert len(stop) == 500 and np.bincount(np.concatenate(stop), minlength=12).min() >= 166
+
+
+def test_memory_source_matches_file_source(tmp_path) -> None:
+    paths, targets = _data(tmp_path, 6)
+    data = torch.from_numpy(np.stack([np.load(p) for p in paths]))
+    mem, files = MemorySource(data), FileSource(paths)
+    assert torch.equal(mem.load([4, 1]), files.load([4, 1]))
+    torch.manual_seed(0)
+    a = pretrain(Tiny(), mem, targets, [0, 1, 2, 3], [4, 5], PretrainConfig(lr=0.05, batch_size=2, max_epochs=1), 0, torch.device("cpu"))
+    torch.manual_seed(0)
+    b = pretrain(Tiny(), files, targets, [0, 1, 2, 3], [4, 5], PretrainConfig(lr=0.05, batch_size=2, max_epochs=1), 0, torch.device("cpu"))
+    assert [h["val_loss"] for h in a["history"]] == [h["val_loss"] for h in b["history"]]
 
 
 def test_pretrain_learns_stops_and_keeps_the_best(tmp_path) -> None:

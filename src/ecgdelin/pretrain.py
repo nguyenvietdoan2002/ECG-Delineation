@@ -81,6 +81,58 @@ class FileSource:
         return self.load(idx).to(device, non_blocking=True)
 
 
+class MemorySource:
+    """States already in memory, one CPU tensor (recordings, layers, leads, blocks, d) (decision 80). Same
+    interface as ``FileSource``: ``load`` gathers a batch on the CPU, ``batch`` also moves it to the device."""
+
+    def __init__(self, data: Tensor, transform: Callable[[Tensor], Tensor] | None = None) -> None:
+        self.data = data
+        self.transform = transform
+
+    def load(self, idx: Sequence[int]) -> Tensor:
+        return torch.index_select(self.data, 0, torch.as_tensor(list(idx), dtype=torch.long))
+
+    def prepare(self, batch: Tensor) -> Tensor:
+        return batch if self.transform is None else self.transform(batch)
+
+    def batch(self, idx: Sequence[int], device: torch.device) -> Tensor:
+        return self.load(idx).to(device, non_blocking=True)
+
+
+def assign_leads(n: int, per_ecg: int, seed: int, n_leads: int = 12) -> list[list[int]]:
+    """``per_ecg`` distinct leads for each of ``n`` recordings, every lead used equally often: each block
+    of ``n_leads // per_ecg`` recordings shares one random permutation of the leads (decision 80)."""
+    if n_leads % per_ecg:
+        raise ValueError(f"{per_ecg} does not divide {n_leads}")
+    rng = np.random.default_rng(seed)
+    group = n_leads // per_ecg
+    out: list[list[int]] = []
+    while len(out) < n:
+        perm = rng.permutation(n_leads)
+        out.extend(sorted(int(v) for v in perm[g * per_ecg : (g + 1) * per_ecg]) for g in range(group))
+    return out[:n]
+
+
+def read_npy(path: Path) -> NDArray[Any]:
+    """``np.load`` with a plain file read: Python's ``readinto`` releases the interpreter lock while it
+    waits on the Volume, which numpy's reader did not, starving the container's heartbeat (decision 80)."""
+    with open(path, "rb") as f:
+        major, _minor = np.lib.format.read_magic(f)
+        header = np.lib.format.read_array_header_1_0 if major == 1 else np.lib.format.read_array_header_2_0
+        shape, fortran, dtype = header(f)
+        if fortran:
+            raise ValueError(f"{path}: Fortran-ordered arrays are not supported")
+        out = np.empty(shape, dtype=dtype)
+        view = memoryview(out.reshape(-1).view(np.uint8))
+        done = 0
+        while done < len(view):
+            n = f.readinto(view[done:])
+            if not n:
+                raise EOFError(f"{path}: {done} of {len(view)} bytes")
+            done += n
+    return out
+
+
 def _chunks(order: Sequence[int], batch_size: int) -> list[list[int]]:
     return [list(order[k : k + batch_size]) for k in range(0, len(order), batch_size)]
 
