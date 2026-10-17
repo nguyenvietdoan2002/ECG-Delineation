@@ -87,7 +87,7 @@ def zero_shot(run: str, weights: str, seed: int, ids: list[str], revision: str, 
         "name": run,
         "scope": "Arm A (decision 72): the PTB-XL+-pretrained head on LUDB people it never trained on, no LUDB training; scored by scripts/pretrained_report.py.",
         "meta": {**meta, "seed": seed, "weights": weights, "parameters": count_parameters(model), "states_revision": revision, "n_people": len(ids),
-                 "device": torch.cuda.get_device_name(0), "torch": torch.__version__, "seconds": time.perf_counter() - t0,
+                 "device": torch.cuda.get_device_name(0), "torch": str(torch.__version__), "seconds": time.perf_counter() - t0,
                  "finished": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")},
     }
     for sub, name, data in (("results", f"{run}.json", result), ("predictions", f"{run}_head.json", serial)):
@@ -178,7 +178,7 @@ def finetune_fold(
         "scope": (f"Arm B (decision 72), fold {fold}: {len(test_ids)} test people predicted by heads started from PTB-XL+-pretrained weights and trained "
                   "on the other folds with step 1's recipe; per-fold numbers are for information only, the verdict comes from scripts/pretrained_report.py."),
         "meta": {**meta, "fold": fold, "init": init, "streams": streams, "states_revision": revision, "device": torch.cuda.get_device_name(0),
-                 "torch": torch.__version__, "n_train": len(train_ids), "n_val": len(val_ids), "n_test": len(test_ids), "train_ids": list(train_ids),
+                 "torch": str(torch.__version__), "n_train": len(train_ids),  # str: TorchVersion would need torch to unpickle locally "n_val": len(val_ids), "n_test": len(test_ids), "train_ids": list(train_ids),
                  "val_ids": list(val_ids), "test_ids": list(test_ids), "load_seconds": load_seconds, "train_seconds": train_seconds,
                  "test_seconds": test_seconds, "max_gpu_memory_gib": torch.cuda.max_memory_allocated() / 2**30,
                  "finished": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")},
