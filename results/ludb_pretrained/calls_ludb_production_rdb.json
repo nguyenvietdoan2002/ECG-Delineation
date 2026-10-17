@@ -1,0 +1,14 @@
+{
+ "launched": {
+  "started": "2026-10-17T13:50:08+00:00",
+  "git": "step1-frozen-51-g49a3e38-dirty"
+ },
+ "pretrained": "rdb_pretrain4_s{seed}",
+ "prefix": "ludb_production_rdb",
+ "streams": "per_seed",
+ "seeds": "0,1,2",
+ "init_seeds": "0,0,0",
+ "calls": {
+  "ludb_production_rdb": "fc-01M55211TX0Y6X4S1335280TM7"
+ }
+}
