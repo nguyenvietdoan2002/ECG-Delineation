@@ -1,0 +1,76 @@
+{
+ "name": "rdb_states",
+ "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+ "n_ecgs": 2399,
+ "n_files": 2399,
+ "chunks": [
+  {
+   "started": "2026-10-17T08:33:01+00:00",
+   "git": "c957875",
+   "chunk": 0,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 480,
+   "written": 480,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.902481428997921,
+   "max_abs_state": 1077.0,
+   "finished": "2026-10-17T08:59:24+00:00"
+  },
+  {
+   "started": "2026-10-17T08:33:01+00:00",
+   "git": "c957875",
+   "chunk": 1,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 480,
+   "written": 480,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.921296101931252,
+   "max_abs_state": 1096.0,
+   "finished": "2026-10-17T08:59:23+00:00"
+  },
+  {
+   "started": "2026-10-17T08:33:01+00:00",
+   "git": "c957875",
+   "chunk": 2,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 480,
+   "written": 480,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.8690269756812554,
+   "max_abs_state": 1098.0,
+   "finished": "2026-10-17T08:58:49+00:00"
+  },
+  {
+   "started": "2026-10-17T08:33:01+00:00",
+   "git": "c957875",
+   "chunk": 3,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 480,
+   "written": 480,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.9459330945562492,
+   "max_abs_state": 1125.0,
+   "finished": "2026-10-17T09:00:06+00:00"
+  },
+  {
+   "started": "2026-10-17T08:33:01+00:00",
+   "git": "c957875",
+   "chunk": 4,
+   "revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "records": 479,
+   "written": 479,
+   "skipped_existing": 0,
+   "model_seconds_per_record": 1.8982429498872655,
+   "max_abs_state": 1090.0,
+   "finished": "2026-10-17T08:59:11+00:00"
+  }
+ ],
+ "path": "/vol/states/43046b85ec22d584a13f8098c2ed39c889e129c2/rdb",
+ "shape_per_record": [
+  20,
+  12,
+  156,
+  2560
+ ],
+ "dtype": "float16"
+}

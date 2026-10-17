@@ -1,0 +1,6 @@
+{
+ "run": "rdb_pretrain4_s0",
+ "dataset": "rdb",
+ "init": "/vol/models/ptbxl_pretrain4_s0/head_s0.pt",
+ "pack_then_train": "fc-01M54J226NW517KF6359E6Y8VK"
+}

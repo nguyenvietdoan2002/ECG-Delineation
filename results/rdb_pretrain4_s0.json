@@ -1,0 +1,121 @@
+{
+ "name": "rdb_pretrain4_s0",
+ "meta": {
+  "started": "2026-10-17T09:11:00+00:00",
+  "git": "c957875",
+  "seed": 0,
+  "n_train": 2159,
+  "n_stop": 240,
+  "leads_per_ecg": 4,
+  "pack": "/vol/rdb/packed4",
+  "load_seconds": 170.88577227899998,
+  "config": {
+   "lr": 0.001,
+   "weight_decay": 0.0001,
+   "batch_size": 8,
+   "max_epochs": 20,
+   "checks_per_epoch": 2,
+   "patience_epochs": 3
+  },
+  "parameters": 492180,
+  "init": "/vol/models/ptbxl_pretrain4_s0/head_s0.pt",
+  "decisions": [
+   76,
+   77,
+   80,
+   90
+  ]
+ },
+ "best_val_loss": 0.12572476264445864,
+ "best_check": 7,
+ "best_epoch": 4.0,
+ "stopped_early": true,
+ "train_seconds": 314.8415184440001,
+ "history": [
+  {
+   "check": 0,
+   "epoch": 0.5,
+   "train_loss": 0.19002107348706987,
+   "val_loss": 0.153538473405818
+  },
+  {
+   "check": 1,
+   "epoch": 1.0,
+   "train_loss": 0.1568092054239026,
+   "val_loss": 0.1422033167920865
+  },
+  {
+   "check": 2,
+   "epoch": 1.5,
+   "train_loss": 0.1440280893334636,
+   "val_loss": 0.14188955252517282
+  },
+  {
+   "check": 3,
+   "epoch": 2.0,
+   "train_loss": 0.13521001096125002,
+   "val_loss": 0.13830483015405268
+  },
+  {
+   "check": 4,
+   "epoch": 2.5,
+   "train_loss": 0.1302815275611701,
+   "val_loss": 0.1337804174491179
+  },
+  {
+   "check": 5,
+   "epoch": 3.0,
+   "train_loss": 0.13054906405784467,
+   "val_loss": 0.12847785824631477
+  },
+  {
+   "check": 6,
+   "epoch": 3.5,
+   "train_loss": 0.12713875224192936,
+   "val_loss": 0.13427315513842833
+  },
+  {
+   "check": 7,
+   "epoch": 4.0,
+   "train_loss": 0.11922249876790576,
+   "val_loss": 0.12572476264445864
+  },
+  {
+   "check": 8,
+   "epoch": 4.5,
+   "train_loss": 0.11790173953330076,
+   "val_loss": 0.12857610110334128
+  },
+  {
+   "check": 9,
+   "epoch": 5.0,
+   "train_loss": 0.11656850267339636,
+   "val_loss": 0.1361537324603942
+  },
+  {
+   "check": 10,
+   "epoch": 5.5,
+   "train_loss": 0.11394376876177612,
+   "val_loss": 0.1257783384767915
+  },
+  {
+   "check": 11,
+   "epoch": 6.0,
+   "train_loss": 0.11221795507051327,
+   "val_loss": 0.12738849463045923
+  },
+  {
+   "check": 12,
+   "epoch": 6.5,
+   "train_loss": 0.1087653555251934,
+   "val_loss": 0.12641159123931336
+  },
+  {
+   "check": 13,
+   "epoch": 7.0,
+   "train_loss": 0.11120584711984352,
+   "val_loss": 0.12812605944082958
+  }
+ ],
+ "weights": "/vol/models/rdb_pretrain4_s0/head_s0.pt"
+}

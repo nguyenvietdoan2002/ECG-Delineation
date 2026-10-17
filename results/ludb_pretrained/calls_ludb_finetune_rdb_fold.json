@@ -1,0 +1,18 @@
+{
+ "launched": {
+  "started": "2026-10-17T09:39:42+00:00",
+  "git": "step1-frozen-47-gc957875-dirty"
+ },
+ "pretrained": "rdb_pretrain4_s{seed}",
+ "prefix": "ludb_finetune_rdb_fold{fold}",
+ "streams": "per_seed",
+ "seeds": "0,1,2",
+ "init_seeds": "0,0,0",
+ "calls": {
+  "ludb_finetune_rdb_fold0": "fc-01M54KPG87DGE35KDQ535XTCY8",
+  "ludb_finetune_rdb_fold1": "fc-01M54KPGJG1050ADQ79EQJ30M3",
+  "ludb_finetune_rdb_fold2": "fc-01M54KPGWEBZ4JVS41DV49GX5V",
+  "ludb_finetune_rdb_fold3": "fc-01M54KPH6SKZTSBZF21GSQHWGM",
+  "ludb_finetune_rdb_fold4": "fc-01M54KPHGWKMM2CEDRD16PVZ2F"
+ }
+}
