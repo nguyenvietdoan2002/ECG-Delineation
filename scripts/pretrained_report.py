@@ -37,7 +37,7 @@ OUT = REPO / "results" / "ludb_pretrained"
 ZERO = "ludb_zeroshot4_s0"
 FINETUNE = "ludb_finetune4_fold{fold}"
 LABEL = {"zero": "Pretrained head, zero-shot (arm A)", "finetuned": "Pretrained head, fine-tuned (arm B)", "head": "Step 1 head",
-         "ecgdeli": "ECGDeli 1.1 (the teacher)", "neurokit": "NeuroKit2"}
+         "ecgdeli": "ECGDeli 1.1 (the teacher)", "neurokit": "NeuroKit2", "candidate": "Candidate"}
 TOL = 150
 
 
@@ -98,7 +98,11 @@ def main() -> None:
     parser.add_argument("--zero", default=str(PREDS / f"{ZERO}_head.json"), help="arm A's predictions")
     parser.add_argument("--finetuned", default=FINETUNE + "_head.json", help="arm B's per-fold predictions under results/predictions/")
     parser.add_argument("--finetuned-results", default=str(OUT / (FINETUNE + ".json")), help="arm B's per-fold result files (training table)")
+    parser.add_argument("--candidate", default="", help="a later detector's per-fold predictions under results/predictions/, judged against arm B (decision 83)")
+    parser.add_argument("--candidate-results", default="", help="its per-fold result files")
+    parser.add_argument("--candidate-label", default="PTB-XL+ then RDB pretrained head, fine-tuned (arm B2)")
     args = parser.parse_args()
+    LABEL["candidate"] = args.candidate_label
 
     folds = Folds.from_json((REPO / "splits" / "ludb_5fold_seed0.json").read_text(encoding="utf-8"))
     people = [rec_id for f in folds.folds for rec_id in f.test]
@@ -118,6 +122,10 @@ def main() -> None:
     if arm_b:
         ft_folds = by_fold(args.finetuned, n_folds)
         methods = {"finetuned": pooled(folds, ft_folds), **methods}
+    candidate = bool(args.candidate) and arm_b and all((PREDS / args.candidate.format(fold=k)).exists() for k in range(n_folds))
+    if candidate:
+        cand_folds = by_fold(args.candidate, n_folds)
+        methods = {"candidate": pooled(folds, cand_folds), **methods}
     for name, sets in methods.items():
         for preds in sets:
             missing = [i for i in people if i not in preds]
@@ -126,13 +134,19 @@ def main() -> None:
     reports = {name: [score(recordings, preds, n_draws=0) for preds in sets] for name, sets in methods.items()}
     primary = {name: seed_averaged_primary(recordings, sets, n_draws=args.draws, seed=0) for name, sets in methods.items()}
     pairs = [("zero", "ecgdeli"), ("zero", "head"), ("zero", "neurokit")] + ([("finetuned", "head"), ("finetuned", "zero")] if arm_b else [])
+    pairs = ([("candidate", "finetuned"), ("candidate", "head")] if candidate else []) + pairs
     verdicts = {f"{a}_vs_{b}": compare_seeds(recordings, methods[a], methods[b], n_draws=args.draws, seed=0) for a, b in pairs}
     decision = None
     if arm_b:
         diff = primary["finetuned"][0] - primary["head"][0]
         decision = {"point_diff_ms": diff, "outcome": adoption(verdicts["finetuned_vs_head"], diff)}
         by_id = {rec.id: rec for rec in recordings}
-        per_fold = {name: per_fold_primary(by_id, folds, {k: [d[s] for s in sorted(d)] for k, d in src.items()}) for name, src in (("finetuned", ft_folds), ("head", head_folds))}
+        sources = [("finetuned", ft_folds), ("head", head_folds)] + ([("candidate", cand_folds)] if candidate else [])
+        per_fold = {name: per_fold_primary(by_id, folds, {k: [d[s] for s in sorted(d)] for k, d in src.items()}) for name, src in sources}
+    decision_candidate = None
+    if candidate:
+        diff_c = primary["candidate"][0] - primary["finetuned"][0]
+        decision_candidate = {"against": "finetuned", "point_diff_ms": diff_c, "outcome": adoption(verdicts["candidate_vs_finetuned"], diff_c)}
 
     lines: list[str] = []
     w = lines.append
@@ -141,6 +155,19 @@ def main() -> None:
       "The head was pretrained on ECGDeli's cleaned marks for 4 leads of each of 4,500 PTB-XL ECGs (`results/ptbxl_pretrain4_s0.json`, decisions 72 to 80). "
       "Primary metric: mean over the five CSE points of the pooled error SD (step 1's scorer); it ignores a constant offset, so the mean error per point is shown beside it. "
       f"Intervals: 95% bootstrap over people, {args.draws:,} draws; comparisons are paired.\n")
+    if decision_candidate is not None:
+        w("## Verdict on the candidate detector (decision 83)\n")
+        v = verdicts["candidate_vs_finetuned"]
+        text = {"adopt": f"**Adopt: {LABEL['candidate']} replaces the current best.**", "borderline": "**Borderline: the point estimate favours the candidate but the interval reaches 0.**",
+                "no": "**No: the candidate does not beat the current best.**"}[decision_candidate["outcome"]]
+        w(text + "\n")
+        w(md_table(["Test", "Value", "Rule"], [
+            [f"{LABEL['candidate']} minus {LABEL['finetuned']}, primary SD (point)", f"{decision_candidate['point_diff_ms']:+.2f} ms", "below 0"],
+            ["95% paired interval of that difference", f"[{v.diff_ci95[0]:.2f}, {v.diff_ci95[1]:.2f}] ms", "entirely below 0"],
+            ["95% paired interval, F1 at 150 ms difference", f"[{v.f1_diff_ci95[0]:+.4f}, {v.f1_diff_ci95[1]:+.4f}]", "not entirely below 0"],
+        ]))
+        w("")
+
     if decision is not None:
         w("## Verdict on pretraining (decision 78)\n")
         v = verdicts["finetuned_vs_head"]
@@ -187,9 +214,16 @@ def main() -> None:
 
     if arm_b:
         w("## Arm B per fold (information only, decision 64)\n")
-        rows = [[f"fold {k}", len(folds.folds[k].test), fmt(per_fold["finetuned"][k], 2), fmt(per_fold["head"][k], 2), f"{per_fold['finetuned'][k] - per_fold['head'][k]:+.2f}"] for k in range(n_folds)]
-        w(md_table(["Fold", "Test people", LABEL["finetuned"], LABEL["head"], "Arm B minus step 1 head"], rows))
+        rows = [[f"fold {k}", len(folds.folds[k].test), fmt(per_fold["finetuned"][k], 2), fmt(per_fold["head"][k], 2), f"{per_fold['finetuned'][k] - per_fold['head'][k]:+.2f}"]
+                + ([fmt(per_fold["candidate"][k], 2), f"{per_fold['candidate'][k] - per_fold['finetuned'][k]:+.2f}"] if candidate else []) for k in range(n_folds)]
+        w(md_table(["Fold", "Test people", LABEL["finetuned"], LABEL["head"], "Arm B minus step 1 head"] + ([LABEL["candidate"], "Candidate minus arm B"] if candidate else []), rows))
         w("")
+        if candidate and args.candidate_results:
+            rows = training_rows(args.candidate_results, n_folds)
+            if rows:
+                w("## Candidate training\n")
+                w(md_table(["Fold", "Model", "Epochs (best)", "Best val loss", "Minutes", "Fold test primary SD ms"], rows))
+                w("")
         rows = training_rows(args.finetuned_results, n_folds)
         if rows:
             w("## Arm B training\n")
@@ -211,6 +245,7 @@ def main() -> None:
         "primary": {n: {"seed_averaged": primary[n][0], "ci95": list(primary[n][1]), "per_seed": [r.primary_sd_ms for r in reports[n]]} for n in methods},
         "verdicts": {k: v.to_dict() for k, v in verdicts.items()},
         "decision": decision,
+        "decision_candidate": decision_candidate,
         "per_fold_primary": per_fold,
         "reports": {n: [r.to_dict() for r in reports[n]] for n in methods},
     }
@@ -222,6 +257,8 @@ def main() -> None:
         print(f"{k:22s} diff CI [{v.diff_ci95[0]:.2f}, {v.diff_ci95[1]:.2f}] F1 CI [{v.f1_diff_ci95[0]:+.4f}, {v.f1_diff_ci95[1]:+.4f}] wins {v.a_wins}")
     if decision is not None:
         print("decision 78:", decision)
+    if decision_candidate is not None:
+        print("decision 83:", decision_candidate)
 
 
 if __name__ == "__main__":

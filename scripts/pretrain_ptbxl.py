@@ -7,6 +7,7 @@ PTB-XL ECGs, stopping on 4 leads of each of the 500 fold-9 ECGs, with every stat
     python scripts/pretrain_ptbxl.py status           # packing, training or done
     modal run scripts/pretrain_ptbxl.py::progress     # the checks so far, from the checkpoint
     modal run scripts/pretrain_ptbxl.py::fetch        # copy the result JSON into results/
+    python scripts/pretrain_ptbxl.py launch dataset=rdb   # RDB as a second stage from the PTB-XL+ head (decision 90); status/progress/fetch take dataset=rdb too
 
 Packing (CPU): five containers read every state file once with plain reads, keep its 4 assigned leads
 and write 20 shards of 250 ECGs to /vol/ptbxl/packed4/ (about 300 GiB in all). Training (T4, 320 GiB):
@@ -33,10 +34,15 @@ PACK = f"{VOL}/ptbxl/packed4"
 LEADS_PER_ECG = 4
 SHARD = 250
 MEMORY = (327680, 344064)  # 320 GiB request, Modal's 336 GiB maximum as the limit
+DATASETS = {  # per dataset: its split, run name, pack dir, calls file and, for a second stage, the weights to start from (decision 90)
+    "ptbxl": {"split": SPLIT, "run": RUN, "pack": PACK, "calls": CALLS, "init": None, "memory": MEMORY},
+    "rdb": {"split": REPO / "splits" / "rdb_pretrain_seed0.json", "run": "rdb_pretrain4_s{seed}", "pack": f"{VOL}/rdb/packed4",
+            "calls": REPO / "results" / "rdb_pretrain_calls.json", "init": f"{VOL}/models/ptbxl_pretrain4_s0/head_s0.pt", "memory": (196608, 229376)},
+}
 
 
 @app.function(volumes={VOL: volume}, cpu=2.0, memory=8192, timeout=3 * 3600, max_containers=5, retries=1)
-def pack_shard(pack_dir: str, shard: int, ids: list[int], leads: list[list[int]], revision: str) -> dict[str, Any]:
+def pack_shard(pack_dir: str, shard: int, ids: list, leads: list[list[int]], revision: str, dataset: str = "ptbxl") -> dict[str, Any]:
     import os
     import time
 
@@ -49,7 +55,7 @@ def pack_shard(pack_dir: str, shard: int, ids: list[int], leads: list[list[int]]
     done = out / f"shard{shard:02d}.json"
     if done.exists():
         return json.loads(done.read_text(encoding="utf-8"))
-    states_dir = Path(VOL) / "states" / revision / "ptbxl"
+    states_dir = Path(VOL) / "states" / revision / dataset
     t0 = time.perf_counter()
     shape = (len(ids), 20, LEADS_PER_ECG, 156, 2560)
     tmp = out / f"shard{shard:02d}_states.npy.tmp"
@@ -59,7 +65,7 @@ def pack_shard(pack_dir: str, shard: int, ids: list[int], leads: list[list[int]]
         for ecg_id, keep in zip(ids, leads):
             states = read_npy(states_dir / f"{ecg_id}.npy")  # (20, 12, 156, 2560)
             f.write(memoryview(np.ascontiguousarray(states[:, keep])).cast("B"))
-            with np.load(Path(VOL) / "ptbxl" / "records" / f"{ecg_id}.npz") as z:
+            with np.load(Path(VOL) / dataset / "records" / f"{ecg_id}.npz") as z:
                 targets.append(targets_from_labels(z["classes"], z["mask"])[keep])
     os.replace(tmp, out / f"shard{shard:02d}_states.npy")
     np.save(out / f"shard{shard:02d}_targets.npy", np.stack(targets))
@@ -70,7 +76,8 @@ def pack_shard(pack_dir: str, shard: int, ids: list[int], leads: list[list[int]]
 
 
 @app.function(gpu="T4", cpu=4.0, volumes={VOL: volume}, memory=MEMORY, timeout=8 * 3600, retries=1)
-def pretrain_head_mem(run: str, pack_dir: str, n_train_shards: int, n_shards: int, seed: int, max_epochs: int, meta: dict[str, Any]) -> dict[str, Any]:
+def pretrain_head_mem(run: str, pack_dir: str, n_train_shards: int, n_shards: int, seed: int, max_epochs: int, meta: dict[str, Any],
+                      init: str | None = None) -> dict[str, Any]:
     import time
     from concurrent.futures import ThreadPoolExecutor
 
@@ -114,6 +121,8 @@ def pretrain_head_mem(run: str, pack_dir: str, n_train_shards: int, n_shards: in
     source = MemorySource(torch.from_numpy(data), transform=normalize_layers)
     torch.manual_seed(seed)
     model = ConvHead(n_layers=20, d_in=2560)
+    if init:  # a second stage continues from an earlier head (decision 90)
+        model.load_state_dict(torch.load(init, map_location="cpu", weights_only=True))
     config = PretrainConfig(max_epochs=max_epochs)
     out = pretrain(model, source, targets, list(range(n_train)), list(range(n_train, int(starts[-1]))), config, seed, device,
                    checkpoint=Path(VOL) / "checkpoints" / f"{run}.pt", log=lambda s: print(s, flush=True),
@@ -125,7 +134,7 @@ def pretrain_head_mem(run: str, pack_dir: str, n_train_shards: int, n_shards: in
         "name": run,
         "meta": {**meta, "seed": seed, "n_train": n_train, "n_stop": int(starts[-1]) - n_train, "leads_per_ecg": LEADS_PER_ECG,
                  "pack": pack_dir, "load_seconds": load_seconds, "config": config.to_dict(), "parameters": count_parameters(model),
-                 "decisions": [76, 77, 80]},
+                 "init": init, "decisions": [76, 77, 80] + ([90] if init else [])},
         "best_val_loss": out["best_val"],
         "best_check": out["best_check"],
         "best_epoch": out["best_epoch"],
@@ -142,8 +151,8 @@ def pretrain_head_mem(run: str, pack_dir: str, n_train_shards: int, n_shards: in
 
 
 @app.function(volumes={VOL: volume}, timeout=4 * 3600)
-def pack_then_train(run: str, pack_dir: str, train_ids: list[int], stop_ids: list[int], revision: str, seed: int, max_epochs: int,
-                    meta: dict[str, Any]) -> dict[str, Any]:
+def pack_then_train(run: str, pack_dir: str, train_ids: list, stop_ids: list, revision: str, seed: int, max_epochs: int,
+                    meta: dict[str, Any], dataset: str = "ptbxl", init: str | None = None) -> dict[str, Any]:
     """Runs on Modal: packs every shard (five CPU containers at a time), then spawns the training call."""
     from ecgdelin.pretrain import assign_leads
 
@@ -154,8 +163,8 @@ def pack_then_train(run: str, pack_dir: str, train_ids: list[int], stop_ids: lis
         for k in range(0, len(ids), SHARD):
             shards.append((ids[k : k + SHARD], leads[k : k + SHARD]))
     n_train_shards = -(-len(train_ids) // SHARD)
-    infos = list(pack_shard.starmap([(pack_dir, s, ids, leads, revision) for s, (ids, leads) in enumerate(shards)]))
-    call = pretrain_head_mem.spawn(run, pack_dir, n_train_shards, len(shards), seed, max_epochs, meta)
+    infos = list(pack_shard.starmap([(pack_dir, s, ids, leads, revision, dataset) for s, (ids, leads) in enumerate(shards)]))
+    call = pretrain_head_mem.spawn(run, pack_dir, n_train_shards, len(shards), seed, max_epochs, meta, init)
     return {"train_call": call.object_id, "n_shards": len(shards), "pack_seconds": [i["seconds"] for i in infos]}
 
 
@@ -166,13 +175,13 @@ def read_result(run: str) -> str:
 
 
 @app.function(volumes={VOL: volume}, timeout=600)
-def read_progress(run: str) -> dict[str, Any]:
+def read_progress(run: str, pack_dir: str = PACK) -> dict[str, Any]:
     """The running job's checks so far, from its checkpoint (written after every check)."""
     import torch
 
     volume.reload()
     path = Path(VOL) / "checkpoints" / f"{run}.pt"
-    packed = sorted(p.name for p in Path(PACK).glob("shard*.json")) if Path(PACK).exists() else []
+    packed = sorted(p.name for p in Path(pack_dir).glob("shard*.json")) if Path(pack_dir).exists() else []
     if not path.exists():
         return {"checks": 0, "history": [], "packed_shards": len(packed)}
     state = torch.load(path, map_location="cpu", weights_only=False)["state"]
@@ -187,9 +196,9 @@ def _git_head() -> str:
         return "unknown"
 
 
-def _plan() -> tuple[str, list[int], list[int]]:
+def _plan(dataset: str = "ptbxl") -> tuple[str, list, list]:
     revision = json.loads(STEP1_MANIFEST.read_text(encoding="utf-8"))["revision"]
-    sample = json.loads(SPLIT.read_text(encoding="utf-8"))["sample"]
+    sample = json.loads(DATASETS[dataset]["split"].read_text(encoding="utf-8"))["sample"]
     return revision, sample["train"], sample["stop"]
 
 
@@ -198,13 +207,13 @@ def _meta() -> dict[str, Any]:
 
 
 @app.local_entrypoint()
-def smoke() -> None:
-    revision, train, stop = _plan()
+def smoke(dataset: str = "ptbxl") -> None:
+    revision, train, stop = _plan(dataset)
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S")
-    run, pack_dir = f"ptbxl_pretrain4_smoke_{stamp}", f"{VOL}/ptbxl/packed4_smoke_{stamp}"
+    run, pack_dir = f"{dataset}_pretrain4_smoke_{stamp}", f"{VOL}/{dataset}/packed4_smoke_{stamp}"
     import modal
 
-    plan = pack_then_train.remote(run, pack_dir, train[:16], stop[:8], revision, 0, 1, _meta())
+    plan = pack_then_train.remote(run, pack_dir, train[:16], stop[:8], revision, 0, 1, _meta(), dataset, DATASETS[dataset]["init"])
     print("packed", plan["n_shards"], "shards in", plan["pack_seconds"], "s")
     result = modal.FunctionCall.from_id(plan["train_call"]).get()
     print(json.dumps({k: v for k, v in result.items() if k not in ("history",)}, indent=1))
@@ -213,9 +222,9 @@ def smoke() -> None:
 
 
 @app.local_entrypoint()
-def progress(seed: int = 0) -> None:
-    run = RUN.format(seed=seed)
-    p = read_progress.remote(run)
+def progress(seed: int = 0, dataset: str = "ptbxl") -> None:
+    run = DATASETS[dataset]["run"].format(seed=seed)
+    p = read_progress.remote(run, DATASETS[dataset]["pack"])
     out = REPO / "results" / f"{run}_progress.json"
     out.write_text(json.dumps({"name": run, "read": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **p}, indent=1),
                    encoding="utf-8", newline="\n")
@@ -225,28 +234,29 @@ def progress(seed: int = 0) -> None:
 
 
 @app.local_entrypoint()
-def fetch(seed: int = 0) -> None:
-    run = RUN.format(seed=seed)
+def fetch(seed: int = 0, dataset: str = "ptbxl") -> None:
+    run = DATASETS[dataset]["run"].format(seed=seed)
     text = read_result.remote(run)
     (REPO / "results" / f"{run}.json").write_text(text, encoding="utf-8", newline="\n")
     r = json.loads(text)
     print(f"{run}: best stop-set loss {r['best_val_loss']:.4f} at epoch {r['best_epoch']}, stopped early {r['stopped_early']}, {r['train_seconds'] / 3600:.1f} h")
 
 
-def launch(seed: int = 0) -> None:
+def launch(seed: int = 0, dataset: str = "ptbxl") -> None:
     import modal
 
-    revision, train, stop = _plan()
-    run = RUN.format(seed=seed)
-    call = modal.Function.from_name(app.name, "pack_then_train").spawn(run, PACK, train, stop, revision, seed, 20, _meta())
-    CALLS.write_text(json.dumps({"run": run, "pack_then_train": call.object_id}, indent=1), encoding="utf-8", newline="\n")
+    d = DATASETS[dataset]
+    revision, train, stop = _plan(dataset)
+    run = d["run"].format(seed=seed)
+    call = modal.Function.from_name(app.name, "pack_then_train").spawn(run, d["pack"], train, stop, revision, seed, 20, _meta(), dataset, d["init"])
+    d["calls"].write_text(json.dumps({"run": run, "dataset": dataset, "init": d["init"], "pack_then_train": call.object_id}, indent=1), encoding="utf-8", newline="\n")
     print("spawned", run, call.object_id)
 
 
-def status() -> None:
+def status(dataset: str = "ptbxl") -> None:
     import modal
 
-    calls = json.loads(CALLS.read_text(encoding="utf-8"))
+    calls = json.loads(DATASETS[dataset]["calls"].read_text(encoding="utf-8"))
     try:
         r = modal.FunctionCall.from_id(calls["pack_then_train"]).get(timeout=0)
     except TimeoutError:
@@ -260,4 +270,7 @@ def status() -> None:
 
 
 if __name__ == "__main__":
-    {"launch": launch, "status": status}[sys.argv[1]]()
+    options = dict(arg.split("=", 1) for arg in sys.argv[2:])  # e.g. dataset=rdb seed=0
+    if "seed" in options:
+        options["seed"] = int(options["seed"])
+    {"launch": launch, "status": status}[sys.argv[1]](**options)

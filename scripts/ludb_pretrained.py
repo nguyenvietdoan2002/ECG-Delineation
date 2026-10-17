@@ -236,14 +236,14 @@ def _print(result: dict[str, Any]) -> None:
         print(f"  {name}: {r['epochs_run']} epochs, best {r['best_epoch']}, val loss {r['best_val_loss']:.4f}, fold test primary SD {r['test_report']['primary_sd_ms']:.2f} ms")
 
 
-def _finetune_plan(fold: int, seeds: list[int], init_seeds: list[int], streams: str, max_epochs: int) -> dict[str, Any]:
+def _finetune_plan(fold: int, seeds: list[int], init_seeds: list[int], streams: str, max_epochs: int, pretrained: str = PRETRAINED, prefix: str = FINETUNE) -> dict[str, Any]:
     """A smoke run's name carries the time, so it never resumes an older smoke run's checkpoint."""
     if len(init_seeds) != len(seeds):
         raise ValueError(f"one pretrained seed per seed: {seeds} vs {init_seeds}")
     f = _folds()[fold]
     smoke = "" if max_epochs >= 200 else "_smoke_" + dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S")
-    run = FINETUNE.format(fold=fold) + smoke
-    init = {str(s): _weights(PRETRAINED.format(seed=i), i) for s, i in zip(seeds, init_seeds)}
+    run = prefix.format(fold=fold) + smoke
+    init = {str(s): _weights(pretrained.format(seed=i), i) for s, i in zip(seeds, init_seeds)}
     return dict(run=run, fold=fold, init=init, streams=streams, train_ids=list(f["train"]), val_ids=list(f["val"]), test_ids=list(f["test"]),
                 revision=_revision(), max_epochs=max_epochs, meta=_meta())
 
@@ -253,10 +253,11 @@ def _ints(text: str) -> list[int]:
 
 
 @app.local_entrypoint()
-def zero(seed: int = 0, smoke: bool = False) -> None:
+def zero(seed: int = 0, smoke: bool = False, pretrained: str = PRETRAINED, run: str = "") -> None:
+    """Arm A; ``pretrained`` names another pretraining run (``rdb_pretrain4_s{seed}``), ``run`` its result name."""
     ids = sorted({p for f in _folds() for p in f["test"]}, key=int)
-    run = ZERO.format(seed=seed) + ("_smoke" if smoke else "")
-    result, serial = zero_shot.remote(run, _weights(PRETRAINED.format(seed=seed), seed), seed, ids[:3] if smoke else ids, _revision(), _meta())
+    run = (run or ZERO.format(seed=seed)) + ("_smoke" if smoke else "")
+    result, serial = zero_shot.remote(run, _weights(pretrained.format(seed=seed), seed), seed, ids[:3] if smoke else ids, _revision(), _meta())
     _write(result, serial)
     print(f"{run}: {len(serial)} people in {result['meta']['seconds']:.0f} s; written to {OUT_DIR}")
 
@@ -278,24 +279,31 @@ def fetch(run: str) -> None:
     _print(result)
 
 
-def launch(folds: str = "0,1,2,3,4", seeds: str = "0,1,2", init_seeds: str = "0,0,0", streams: str = "per_seed", max_epochs: int = 200) -> None:
+def _calls_file(prefix: str) -> Path:
+    return CALLS if prefix == FINETUNE else OUT_DIR / f"calls_{prefix.format(fold='').rstrip('_')}.json"
+
+
+def launch(folds: str = "0,1,2,3,4", seeds: str = "0,1,2", init_seeds: str = "0,0,0", streams: str = "per_seed", max_epochs: int = 200,
+           pretrained: str = PRETRAINED, prefix: str = FINETUNE) -> None:
+    """``pretrained`` names the pretraining run to start from, ``prefix`` the fold runs (both with {seed} / {fold}):
+    python scripts/ludb_pretrained.py launch pretrained=rdb_pretrain4_s{seed} prefix=ludb_finetune_rdb_fold{fold}"""
     import modal
 
     fn = modal.Function.from_name(app.name, "finetune_fold")
     calls = {}
     for fold in _ints(folds):
-        plan = _finetune_plan(fold, _ints(seeds), _ints(init_seeds), streams, max_epochs)
+        plan = _finetune_plan(fold, _ints(seeds), _ints(init_seeds), streams, max_epochs, pretrained, prefix)
         calls[plan["run"]] = fn.spawn(**plan).object_id
         print("spawned", plan["run"], calls[plan["run"]])
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    CALLS.write_text(json.dumps({"launched": _meta(), "streams": streams, "seeds": seeds, "init_seeds": init_seeds, "calls": calls}, indent=1),
-                     encoding="utf-8", newline="\n")
+    _calls_file(prefix).write_text(json.dumps({"launched": _meta(), "pretrained": pretrained, "prefix": prefix, "streams": streams, "seeds": seeds, "init_seeds": init_seeds, "calls": calls}, indent=1),
+                                   encoding="utf-8", newline="\n")
 
 
-def status() -> None:
+def status(prefix: str = FINETUNE) -> None:
     import modal
 
-    for run, call_id in json.loads(CALLS.read_text(encoding="utf-8"))["calls"].items():
+    for run, call_id in json.loads(_calls_file(prefix).read_text(encoding="utf-8"))["calls"].items():
         try:
             result, serial = modal.FunctionCall.from_id(call_id).get(timeout=0)
         except TimeoutError:
