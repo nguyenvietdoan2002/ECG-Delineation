@@ -171,20 +171,23 @@ def finetune_fold(
             predictions[t.name][rec.id] = _points(t.model, normalised, rec)
         del normalised
     test_seconds = time.perf_counter() - t_test
-    reports = {t.name: score(test_recordings, predictions[t.name]) for t in trainees}
+    reports = {t.name: score(test_recordings, predictions[t.name]) for t in trainees} if test_ids else {}
 
     result: dict[str, Any] = {
         "name": run,
-        "scope": (f"Arm B (decision 72), fold {fold}: {len(test_ids)} test people predicted by heads started from PTB-XL+-pretrained weights and trained "
+        "scope": ("Production detector (decision 91): one head per seed trained on all LUDB people but the stopping set, from the current best pretrained head; no test people, "
+                  "its quality is the cross-validated figure of the same recipe." if fold < 0 else
+                  f"Arm B (decision 72), fold {fold}: {len(test_ids)} test people predicted by heads started from pretrained weights and trained "
                   "on the other folds with step 1's recipe; per-fold numbers are for information only, the verdict comes from scripts/pretrained_report.py."),
         "meta": {**meta, "fold": fold, "init": init, "streams": streams, "states_revision": revision, "device": torch.cuda.get_device_name(0),
-                 "torch": str(torch.__version__), "n_train": len(train_ids),  # str: TorchVersion would need torch to unpickle locally "n_val": len(val_ids), "n_test": len(test_ids), "train_ids": list(train_ids),
+                 "torch": str(torch.__version__),  # str: TorchVersion would need torch to unpickle locally
+                 "n_train": len(train_ids), "n_val": len(val_ids), "n_test": len(test_ids), "train_ids": list(train_ids),
                  "val_ids": list(val_ids), "test_ids": list(test_ids), "load_seconds": load_seconds, "train_seconds": train_seconds,
                  "test_seconds": test_seconds, "max_gpu_memory_gib": torch.cuda.max_memory_allocated() / 2**30,
                  "finished": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")},
         "config": config.to_dict(),
         "models": {t.name: {"model": "head", "seed": int(t.name.rsplit("_s", 1)[1]), "n_params": count_parameters(t.model), **t.summary(),
-                            "layer_weights": t.model.blend.weights(), "test_report": reports[t.name].to_dict()} for t in trainees},
+                            "layer_weights": t.model.blend.weights(), "test_report": reports[t.name].to_dict() if test_ids else None} for t in trainees},
     }
     serial = [{"id": rec.id, "seed": int(t.name.rsplit("_s", 1)[1]), "leads": {lead: lp.to_dict() for lead, lp in predictions[t.name][rec.id].items()}}
               for t in trainees for rec in test_recordings]
@@ -248,6 +251,19 @@ def _finetune_plan(fold: int, seeds: list[int], init_seeds: list[int], streams: 
                 revision=_revision(), max_epochs=max_epochs, meta=_meta())
 
 
+def _production_plan(seeds: list[int], init_seeds: list[int], streams: str, max_epochs: int, pretrained: str, run: str) -> dict[str, Any]:
+    """Decision 91: every LUDB person trains except fold 0's 32 validation people, who stop the training; no test people."""
+    if len(init_seeds) != len(seeds):
+        raise ValueError(f"one pretrained seed per seed: {seeds} vs {init_seeds}")
+    folds = _folds()
+    everyone = sorted({p for f in folds for p in f["test"]}, key=int)
+    val = list(folds[0]["val"])
+    train = [p for p in everyone if p not in set(val)]
+    smoke = "" if max_epochs >= 200 else "_smoke_" + dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S")
+    init = {str(s): _weights(pretrained.format(seed=i), i) for s, i in zip(seeds, init_seeds)}
+    return dict(run=run + smoke, fold=-1, init=init, streams=streams, train_ids=train, val_ids=val, test_ids=[], revision=_revision(), max_epochs=max_epochs, meta=_meta())
+
+
 def _ints(text: str) -> list[int]:
     return [int(v) for v in text.split(",") if v.strip()]
 
@@ -300,6 +316,19 @@ def launch(folds: str = "0,1,2,3,4", seeds: str = "0,1,2", init_seeds: str = "0,
                                    encoding="utf-8", newline="\n")
 
 
+def launch_production(seeds: str = "0,1,2", init_seeds: str = "0,0,0", streams: str = "per_seed", max_epochs: int = 200,
+                      pretrained: str = "rdb_pretrain4_s{seed}", run: str = "ludb_production_rdb") -> None:
+    """python scripts/ludb_pretrained.py launch_production [max_epochs=2]; then status prefix=<run>"""
+    import modal
+
+    plan = _production_plan(_ints(seeds), _ints(init_seeds), streams, max_epochs, pretrained, run)
+    call = modal.Function.from_name(app.name, "finetune_fold").spawn(**plan)
+    print("spawned", plan["run"], call.object_id, f"({len(plan['train_ids'])} train, {len(plan['val_ids'])} stopping)")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    _calls_file(plan["run"]).write_text(json.dumps({"launched": _meta(), "pretrained": pretrained, "prefix": plan["run"], "streams": streams, "seeds": seeds, "init_seeds": init_seeds,
+                                                   "calls": {plan["run"]: call.object_id}}, indent=1), encoding="utf-8", newline="\n")
+
+
 def status(prefix: str = FINETUNE) -> None:
     import modal
 
@@ -318,4 +347,4 @@ if __name__ == "__main__":
     options = dict(arg.split("=", 1) for arg in sys.argv[2:])
     if "max_epochs" in options:
         options["max_epochs"] = int(options["max_epochs"])
-    {"launch": launch, "status": status}[sys.argv[1]](**options)
+    {"launch": launch, "launch_production": launch_production, "status": status}[sys.argv[1]](**options)
