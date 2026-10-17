@@ -318,4 +318,4 @@ if __name__ == "__main__":
     options = dict(arg.split("=", 1) for arg in sys.argv[2:])
     if "max_epochs" in options:
         options["max_epochs"] = int(options["max_epochs"])
-    {"launch": lambda: launch(**options), "status": status}[sys.argv[1]]()
+    {"launch": launch, "status": status}[sys.argv[1]](**options)
