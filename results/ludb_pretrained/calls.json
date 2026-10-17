@@ -1,0 +1,16 @@
+{
+ "launched": {
+  "started": "2026-10-17T02:11:51+00:00",
+  "git": "step1-frozen-41-gac28720-dirty"
+ },
+ "streams": "per_seed",
+ "seeds": "0,1,2",
+ "init_seeds": "0,0,0",
+ "calls": {
+  "ludb_finetune4_fold0": "fc-01M53T2EFHNBQWCMQE80SMV1QB",
+  "ludb_finetune4_fold1": "fc-01M53T2ETRHHCQHYPJZGF9J5MC",
+  "ludb_finetune4_fold2": "fc-01M53T2F5P76E2VXDAT3D5KFKZ",
+  "ludb_finetune4_fold3": "fc-01M53T2FGF04W1J0FEMTQWXBFX",
+  "ludb_finetune4_fold4": "fc-01M53T2FVYGRWFZC84C02F4ARA"
+ }
+}

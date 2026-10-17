@@ -1,0 +1,17 @@
+{
+ "name": "ludb_zeroshot4_s0",
+ "scope": "Arm A (decision 72): the PTB-XL+-pretrained head on LUDB people it never trained on, no LUDB training; scored by scripts/pretrained_report.py.",
+ "meta": {
+  "started": "2026-10-17T01:49:55+00:00",
+  "git": "step1-frozen-41-gac28720-dirty",
+  "seed": 0,
+  "weights": "/vol/models/ptbxl_pretrain4_s0/head_s0.pt",
+  "parameters": 492180,
+  "states_revision": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+  "n_people": 200,
+  "device": "Tesla T4",
+  "torch": "2.14.1+cu130",
+  "seconds": 1254.121503354,
+  "finished": "2026-10-17T02:11:02+00:00"
+ }
+}
