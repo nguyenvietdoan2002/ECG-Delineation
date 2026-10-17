@@ -41,17 +41,22 @@ def _weights(run: str, seed: int) -> str:
     return f"{VOL}/models/{run}/head_s{seed}.pt"
 
 
-def _predict(model: Any, rec: Any, states_path: Path, device: Any) -> dict[str, Any]:
-    """One person's points per lead: step 1's normalisation, argmax and decoder."""
+def _states(path: Path, device: Any) -> Any:
+    """One person's stored states on the device, with step 1's per-layer normalisation applied."""
     import torch
 
     from ecgdelin.models import normalize_layers
-    from ecgdelin.preprocess import prepare
     from ecgdelin.pretrain import read_npy
+
+    return normalize_layers(torch.from_numpy(read_npy(path))[None].to(device))
+
+
+def _points(model: Any, normalised: Any, rec: Any) -> dict[str, Any]:
+    """Points per lead from step 1's argmax and decoder, peaks read from the signal the model saw."""
+    from ecgdelin.preprocess import prepare
     from ecgdelin.trained import classes_of, points_from_classes
 
     x = prepare(rec.signal, rec.fs)
-    normalised = normalize_layers(torch.from_numpy(read_npy(states_path))[None].to(device))
     return points_from_classes(classes_of(model, normalised, normalized=True), x, rec.fs)
 
 
@@ -74,7 +79,7 @@ def zero_shot(run: str, weights: str, seed: int, ids: list[str], revision: str, 
     t0 = time.perf_counter()
     serial = []
     for k, rec_id in enumerate(ids):
-        points = _predict(model, load_record(root, rec_id), states_dir / f"{rec_id}.npy", device)
+        points = _points(model, _states(states_dir / f"{rec_id}.npy", device), load_record(root, rec_id))
         serial.append({"id": rec_id, "seed": seed, "leads": {lead: lp.to_dict() for lead, lp in points.items()}})
         if k % 25 == 0:
             print(f"{run}: {k + 1} of {len(ids)} people, {time.perf_counter() - t0:.0f} s", flush=True)
@@ -161,8 +166,10 @@ def finetune_fold(
     predictions: dict[str, dict[str, Any]] = {t.name: {} for t in trainees}
     t_test = time.perf_counter()
     for rec in test_recordings:
+        normalised = _states(states_dir / f"{rec.id}.npy", device)
         for t in trainees:
-            predictions[t.name][rec.id] = _predict(t.model, rec, states_dir / f"{rec.id}.npy", device)
+            predictions[t.name][rec.id] = _points(t.model, normalised, rec)
+        del normalised
     test_seconds = time.perf_counter() - t_test
     reports = {t.name: score(test_recordings, predictions[t.name]) for t in trainees}
 
