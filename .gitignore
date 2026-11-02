@@ -16,3 +16,8 @@ __pycache__/
 !results/deck/*.npz
 # Local exchange files (e.g. the MATLAB input and output of scripts/ecgdeli_ludb.py); never committed.
 work/
+# Local data (LUDB under data/ludb); never committed.
+data/
+# Kept private until the paper is submitted.
+docs/paper.md
+docs/refs/

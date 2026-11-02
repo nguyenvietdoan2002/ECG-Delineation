@@ -7,7 +7,7 @@ Meddies teammates who know machine learning but not TimesFM 3, LUDB or ECG delin
 question, grounding, pipeline, data, processing, models, baseline, training, decoding, evaluation,
 results, limits, process, close. Every source file and script is walked in the main flow. Terms are
 defined on the slide where they first matter. Figures are the repository's PNGs. Code snippets are copied
-from commit `e107f87` (tag `step1-frozen` plus the post-freeze launch tooling and results).
+from commit `e4ad622` (tag `step1-frozen` plus the post-freeze launch tooling and results).
 
 Numbers: every result number comes from `docs/report.md` and `results/m4/summary.json` (five folds, three
 seeds, 200 people). M3 development figures and numbers appear only where labelled development-only (slides 6, 22, 24 and
@@ -468,7 +468,7 @@ Added on 2026-10-12 so the audience can check each architecture against its code
 The three slides share one layout: a header band with the main class and its learned-parameter count;
 the architecture as a pipeline of boxes with real shapes, per-box counts and the code lines each box
 comes from, learned boxes outlined in the model's colour; and on the right a numbered snapshot of
-`src/ecgdelin/models.py` at tag `step1-frozen` (commit `2f3afc5`; the file is unchanged since). A "⋮"
+`src/ecgdelin/models.py` at tag `step1-frozen` (commit `7b75496`; the file is unchanged since). A "⋮"
 row marks lines shown on a sibling slide.
 
 **Visual:** D6: six boxes top to bottom, learned ones in green. Stored TimesFM states (20 layers,

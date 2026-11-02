@@ -8,7 +8,6 @@ DOI [10.23919/EUSIPCO63174.2024.10715353](https://doi.org/10.23919/EUSIPCO63174.
 
 - Open-access PDF (EURASIP): <https://eurasip.org/Proceedings/Eusipco/Eusipco2024/pdfs/0001402.pdf>
 - Author copy: <https://jonasemrich.de/publications/physiology-informed-ecg-delineation-based-on-peak-prominence/EUSIPCO24_ECG_delineation_print.pdf>
-- Local copy: [refs/Emrich2024_EUSIPCO_prominence_delineation.pdf](refs/Emrich2024_EUSIPCO_prominence_delineation.pdf)
 - Code: <https://github.com/JonasEmrich/prominence-delineator> (GPL-3.0). Ported into NeuroKit2 by the
   first author in [PR #1053](https://github.com/neuropsychology/NeuroKit/pull/1053) (merged
   2024-11-27), first released in NeuroKit2 0.2.11 (2025-05-13); logic unchanged through 0.2.13.
